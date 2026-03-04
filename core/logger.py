@@ -1,6 +1,5 @@
 import datetime
 
-def log_event(text):
-
+def log(text):
     with open("bot_log.txt", "a") as f:
         f.write(f"{datetime.datetime.now()} | {text}\n")

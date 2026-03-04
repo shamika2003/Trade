@@ -1,19 +1,28 @@
 import MetaTrader5 as mt5
-from model.config import TRADE_LOT, SYMBOL
+from config import SYMBOL, TRADE_LOT, MAX_OPEN_TRADES
+
+def can_open_trade():
+
+    positions = mt5.positions_get(symbol=SYMBOL)
+
+    if positions is None:
+        return True
+
+    return len(positions) < MAX_OPEN_TRADES
+
 
 def execute_trade(direction):
 
-    if not mt5.initialize():
-        print("MT5 init failed")
+    if not can_open_trade():
         return
 
-    symbol_tick = mt5.symbol_info_tick(SYMBOL)
+    tick = mt5.symbol_info_tick(SYMBOL)
 
     if direction == "BUY":
-        price = symbol_tick.ask
+        price = tick.ask
         order_type = mt5.ORDER_TYPE_BUY
     else:
-        price = symbol_tick.bid
+        price = tick.bid
         order_type = mt5.ORDER_TYPE_SELL
 
     request = {
@@ -24,7 +33,7 @@ def execute_trade(direction):
         "price": price,
         "deviation": 20,
         "magic": 7777,
-        "comment": "ML_DEMO_BOT"
+        "comment": "DEMO_ML_BOT",
     }
 
     mt5.order_send(request)

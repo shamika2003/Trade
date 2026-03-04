@@ -1,5 +1,5 @@
 import numpy as np
-from model.config import SIGNAL_THRESHOLD
+from config import SIGNAL_THRESHOLD
 
 def decide_signal(pred):
 
