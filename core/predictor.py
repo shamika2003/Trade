@@ -11,24 +11,25 @@ class Predictor:
 
         self.models = joblib.load(MODEL_PATH)
 
-    # ======================================
+        if not isinstance(self.models, dict):
+            raise RuntimeError("Model file must contain dictionary of models")
+
+    # =====================================================
     # Regime Selection Helper
-    # ======================================
+    # =====================================================
 
     def _select_model(self, df):
 
+        if "volatility_regime" not in df.columns:
+            return "low"
+
         regime = df["volatility_regime"].iloc[-1]
 
-        if regime > 0.75:
-            regime_key = "high"
-        else:
-            regime_key = "low"
+        return "high" if regime > 0.75 else "low"
 
-        return regime_key
-
-    # ======================================
+    # =====================================================
     # Prediction Engine
-    # ======================================
+    # =====================================================
 
     def predict(self, df, feature_list):
 
@@ -39,9 +40,19 @@ class Predictor:
 
         regime = self._select_model(df)
 
-        # Use short horizon trading signal (primary driver)
-        model = self.models[f"{regime}_short"]
+        model_key = f"{regime}_short"
 
-        pred = model.predict(df[feature_list])
+        # Safety check for model existence
+        if model_key not in self.models:
+            print(f"Warning: Model {model_key} not found. Using fallback prediction.")
+            return np.array([0])
 
-        return np.array(pred)
+        model = self.models[model_key]
+
+        try:
+            pred = model.predict(df[feature_list])
+            return np.array(pred)
+
+        except Exception as e:
+            print("Prediction error:", e)
+            return np.array([0])

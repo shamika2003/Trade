@@ -1,3 +1,5 @@
+# filename: demo_bot.py
+
 import time
 import numpy as np
 import MetaTrader5 as mt5
@@ -5,8 +7,7 @@ import MetaTrader5 as mt5
 from config import COOLDOWN_SECONDS, BOT_MODE, SYMBOL, SIGNAL_THRESHOLD
 from core.data_fetcher import initialize_mt5, get_mtf_data
 from core.predictor import Predictor
-from core.executor import execute_trade
-from core.logger import log
+from core.executor import BrainExecutor
 from core.feature_engine_live import FeatureTransformerLive
 
 
@@ -28,7 +29,7 @@ def smooth_prediction(pred):
 
 
 # ==================================================
-# Capital Risk Setup
+# Capital Setup (Reserved for Future Risk Engine)
 # ==================================================
 
 def ask_capital():
@@ -47,7 +48,7 @@ def ask_capital():
 
 
 # ==================================================
-# Main Bot Loop
+# Main Brain Loop
 # ==================================================
 
 def main():
@@ -58,10 +59,11 @@ def main():
 
     predictor = Predictor()
     transformer = FeatureTransformerLive()
+    executor = BrainExecutor()
 
     last_trade_time = 0
 
-    print("Demo Bot Started...")
+    print("Autonomous Brain Bot Started...")
 
     while True:
 
@@ -74,8 +76,8 @@ def main():
                 continue
 
             df = transformer.build_multi_timeframe_features(
-                df_m5.sort_values("time"),
-                df_h1.sort_values("time")
+                df_m5,
+                df_h1
             )
 
             if df.empty:
@@ -94,7 +96,6 @@ def main():
 
             pred = smooth_prediction(raw_pred)
 
-            # Confidence gating
             if abs(pred) < SIGNAL_THRESHOLD:
                 print("Low confidence signal skipped")
                 time.sleep(60)
@@ -102,7 +103,7 @@ def main():
 
             signal = "BUY" if pred > 0 else "SELL"
 
-            print("Prediction:", pred)
+            print("Prediction:", round(pred, 4))
             print("Signal:", signal)
 
             now = time.time()
@@ -117,32 +118,47 @@ def main():
 
                 if now - last_trade_time > COOLDOWN_SECONDS:
 
-                    log(f"{signal} | {pred}")
-
                     if BOT_MODE == "AUTO_DEMO":
-                        execute_trade(signal)
+                        executor.open_trade(signal)
 
                     last_trade_time = now
 
-            else:
+            # ==================================================
+            # Exit Logic
+            # ==================================================
 
-                # ==================================================
-                # Position Protection Layer
-                # ==================================================
+            else:
 
                 pos = positions[0]
 
-                if pos.profit > 0.5 or pos.profit < -1.0:
+                # Take profit exit
+                if pos.profit > 0.5:
 
-                    print("Brain exit protection triggered")
+                    print("Brain Take Profit Exit")
 
-                    opposite = "SELL" if pos.type == mt5.ORDER_TYPE_BUY else "BUY"
+                    executor.close_position(pos)
 
-                    execute_trade(opposite)
+                    last_trade_time = now
+
+                    time.sleep(2)
+                    continue
+
+                # Stop loss exit
+                if pos.profit < -1.0:
+
+                    print("Brain Stop Loss Exit")
+
+                    executor.close_position(pos)
+
+                    last_trade_time = now
+
+                    time.sleep(2)
+                    continue
 
             time.sleep(60)
 
         except Exception as e:
+
             print("Bot Loop Error:", e)
             time.sleep(30)
 

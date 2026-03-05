@@ -1,9 +1,14 @@
 # filename: feature_engine_live.py
+
 import pandas as pd
 import numpy as np
 
 
 class FeatureTransformerLive:
+
+    # =====================================================
+    # Feature Schema (Keep synchronized with training)
+    # =====================================================
 
     def get_feature_list(self):
 
@@ -25,15 +30,23 @@ class FeatureTransformerLive:
             "hour_sin","hour_cos"
         ]
 
+    # =====================================================
+    # Technical Feature Generator
+    # =====================================================
+
     def _technical(self, df):
 
         df = df.copy()
 
         eps = 1e-9
 
+        if "close" not in df.columns:
+            return df
+
         price = df["close"].replace(0, np.nan)
 
         df["return"] = np.log(price / price.shift(1))
+
         df["range"] = (df["high"] - df["low"]) / (price + eps)
 
         delta = price.diff()
@@ -60,17 +73,16 @@ class FeatureTransformerLive:
 
         df["trend"] = df["ma5"] - df["ma20"]
 
-        df["volume_change"] = df["tick_volume"].pct_change()
+        df["volume_change"] = df["tick_volume"].pct_change().fillna(0)
 
-        df["atr_ratio"] = df["range"]/(df["atr"]+eps)
+        df["atr_ratio"] = df["range"] / (df["atr"] + eps)
 
         high20 = df["high"].rolling(20).max()
         low20 = df["low"].rolling(20).min()
 
-        df["range_position"] = (price-low20)/(high20-low20+eps)
-        df["range_position"] = df["range_position"].clip(0,1)
+        df["range_position"] = ((price-low20)/(high20-low20+eps)).clip(0,1)
 
-        df["trend_strength"] = df["trend"]/(price+eps)
+        df["trend_strength"] = df["trend"] / (price + eps)
 
         df["volatility"] = df["return"].rolling(20).std()
 
@@ -87,7 +99,7 @@ class FeatureTransformerLive:
 
         df["volatility_change"] = (
             df["volatility"]/(df["volatility"].shift(10)+eps)
-        )
+        ).fillna(0)
 
         rolling_high_50 = df["high"].rolling(50).max()
         rolling_low_50 = df["low"].rolling(50).min()
@@ -102,34 +114,48 @@ class FeatureTransformerLive:
             df["hour_sin"] = np.sin(2*np.pi*hours/24)
             df["hour_cos"] = np.cos(2*np.pi*hours/24)
 
-        df.replace([np.inf,-np.inf], np.nan, inplace=True)
+        df.replace([np.inf, -np.inf], np.nan, inplace=True)
 
         df["volatility_regime"] = (
             df["return"].rolling(50).std().rank(pct=True)
-        )
+        ).fillna(0)
 
         return df
+
+    # =====================================================
+    # Multi-Timeframe Feature Fusion
+    # =====================================================
 
     def build_multi_timeframe_features(self, df_m5, df_h1):
 
         df_m5 = self._technical(df_m5)
         df_h1 = self._technical(df_h1)
 
-        df_h1 = df_h1[[
+        required_cols = [
             "time","ma20","rsi",
             "trend_strength","structure_bias"
-        ]].copy()
+        ]
 
-        df_h1.rename(columns={
+        df_h1 = df_h1[[c for c in required_cols if c in df_h1.columns]].copy()
+
+        rename_map = {
             "ma20":"h1_ma20",
             "rsi":"h1_rsi",
             "trend_strength":"h1_trend_strength",
             "structure_bias":"h1_structure_bias"
-        }, inplace=True)
+        }
 
-        df_h1["h1_trend_bias"] = np.sign(
-            df_h1["h1_trend_strength"]
-        )
+        df_h1.rename(columns=rename_map, inplace=True)
+
+        if "h1_trend_strength" in df_h1.columns:
+            df_h1["h1_trend_bias"] = np.sign(
+                df_h1["h1_trend_strength"]
+            )
+        else:
+            df_h1["h1_trend_bias"] = 0
+
+        if "time" not in df_m5.columns:
+            return pd.DataFrame()
 
         df_h1.set_index("time", inplace=True)
         df_m5.set_index("time", inplace=True)
@@ -144,10 +170,13 @@ class FeatureTransformerLive:
             df_h1.drop(columns=["time"], errors="ignore")
         ], axis=1)
 
-        df["m5_h1_alignment"] = (
-            (df["structure_bias"]>0) &
-            (df["h1_structure_bias"]>0)
-        ).astype(int)
+        if "structure_bias" in df.columns and "h1_structure_bias" in df.columns:
+            df["m5_h1_alignment"] = (
+                (df["structure_bias"]>0) &
+                (df["h1_structure_bias"]>0)
+            ).astype(int)
+        else:
+            df["m5_h1_alignment"] = 0
 
         df.dropna(inplace=True)
 

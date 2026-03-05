@@ -21,27 +21,47 @@ def can_open_trade():
 
 
 # =====================================================
-# Safe Trade Executor
+# Safe Brain Trade Executor
 # =====================================================
 
-def execute_trade(direction):
+class BrainExecutor:
 
-    if not can_open_trade():
-        print("Trade blocked: Max position limit reached")
-        return
+    # -----------------------------------------
+    # Internal Order Sender
+    # -----------------------------------------
 
-    if direction not in ["BUY", "SELL"]:
-        print("Invalid trade direction")
-        return
+    def _send_order(self, request):
 
-    for attempt in range(3):
+        for _ in range(3):
+
+            result = mt5.order_send(request)
+
+            if result is not None and result.retcode == mt5.TRADE_RETCODE_DONE:
+                return True
+
+            time.sleep(0.5)
+
+        return False
+
+    # -----------------------------------------
+    # Open Trade
+    # -----------------------------------------
+
+    def open_trade(self, direction):
+
+        if not can_open_trade():
+            print("Trade blocked: Max position limit reached")
+            return False
+
+        if direction not in ["BUY", "SELL"]:
+            print("Invalid trade direction")
+            return False
 
         tick = mt5.symbol_info_tick(SYMBOL)
 
         if tick is None:
             print("Tick data not available")
-            time.sleep(1)
-            continue
+            return False
 
         if direction == "BUY":
             price = tick.ask
@@ -50,11 +70,9 @@ def execute_trade(direction):
             price = tick.bid
             order_type = mt5.ORDER_TYPE_SELL
 
-        # Prevent invalid price execution
         if price is None or price <= 0:
             print("Invalid market price")
-            time.sleep(1)
-            continue
+            return False
 
         request = {
             "action": mt5.TRADE_ACTION_DEAL,
@@ -69,17 +87,48 @@ def execute_trade(direction):
             "type_filling": mt5.ORDER_FILLING_IOC,
         }
 
-        result = mt5.order_send(request)
+        success = self._send_order(request)
 
-        if result is not None:
+        if success:
+            print("Brain opened trade:", direction)
 
-            if result.retcode == mt5.TRADE_RETCODE_DONE:
-                print("Trade executed successfully:", direction)
-                return
+        return success
 
-            else:
-                print("Trade execution failed retcode:", result.retcode)
+    # -----------------------------------------
+    # Close Position (Ticket Based)
+    # -----------------------------------------
 
-        time.sleep(1)
+    def close_position(self, position):
 
-    print("Trade failed after retries")
+        tick = mt5.symbol_info_tick(SYMBOL)
+
+        if tick is None:
+            return False
+
+        if position.type == mt5.ORDER_TYPE_BUY:
+            price = tick.bid
+            order_type = mt5.ORDER_TYPE_SELL
+        else:
+            price = tick.ask
+            order_type = mt5.ORDER_TYPE_BUY
+
+        request = {
+            "action": mt5.TRADE_ACTION_DEAL,
+            "symbol": SYMBOL,
+            "volume": position.volume,
+            "type": order_type,
+            "position": position.ticket,
+            "price": price,
+            "deviation": 50,
+            "magic": 7777,
+            "comment": "ML_CLOSE",
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": mt5.ORDER_FILLING_IOC,
+        }
+
+        success = self._send_order(request)
+
+        if success:
+            print("Brain closed position")
+
+        return success

@@ -7,9 +7,9 @@ import time
 from config import SYMBOL
 
 
-# =========================================
-# MT5 Initialization
-# =========================================
+# =====================================================
+# MT5 Initialization Layer
+# =====================================================
 
 def initialize_mt5():
 
@@ -31,27 +31,33 @@ def initialize_mt5():
     return True
 
 
-# =========================================
-# Safe Market Data Fetcher
-# =========================================
+# =====================================================
+# Safe Rate Fetcher
+# =====================================================
 
 def _fetch_rates(timeframe, n_bars, retry=3):
 
     for _ in range(retry):
 
-        rates = mt5.copy_rates_from_pos(
-            SYMBOL,
-            timeframe,
-            0,
-            n_bars
-        )
+        try:
 
-        if rates is not None:
-            df = pd.DataFrame(rates)
+            rates = mt5.copy_rates_from_pos(
+                SYMBOL,
+                timeframe,
+                0,
+                n_bars
+            )
 
-            if not df.empty:
-                df["time"] = pd.to_datetime(df["time"], unit="s")
-                return df
+            if rates is not None:
+
+                df = pd.DataFrame(rates)
+
+                if not df.empty:
+                    df["time"] = pd.to_datetime(df["time"], unit="s")
+                    return df
+
+        except Exception as e:
+            print("Market data fetch error:", e)
 
         print("Retry fetching market data...")
         time.sleep(1)
@@ -59,9 +65,9 @@ def _fetch_rates(timeframe, n_bars, retry=3):
     return None
 
 
-# =========================================
-# Multi Timeframe Data Fetch
-# =========================================
+# =====================================================
+# Multi-Timeframe Data Pipeline
+# =====================================================
 
 def get_mtf_data():
 
@@ -81,4 +87,7 @@ def get_mtf_data():
     if df_m5.empty or df_h1.empty:
         return None, None
 
-    return df_m5.sort_values("time"), df_h1.sort_values("time")
+    return (
+        df_m5.sort_values("time").reset_index(drop=True),
+        df_h1.sort_values("time").reset_index(drop=True)
+    )
