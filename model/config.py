@@ -9,7 +9,7 @@ MODEL_PATH = "model/trading_model.pkl"
 
 # Backtest configuration
 FUTURE_PERIOD = 12
-SIGNAL_THRESHOLD = 1.2   # stronger selectivity
+SIGNAL_THRESHOLD = 1.8   # stronger selectivity
 SPREAD_COST = 0.0002
 
 

@@ -1,11 +1,14 @@
-import numpy as np
+# filename: signal_engine.py
+
 from config import SIGNAL_THRESHOLD
+
 
 def decide_signal(pred):
 
-    z = (pred - np.mean(pred)) / (np.std(pred) + 1e-9)
+    # Safety clamp
+    pred = max(min(pred, 2), -2)
 
-    if abs(z) < SIGNAL_THRESHOLD:
+    if abs(pred) < SIGNAL_THRESHOLD:
         return None
 
-    return "BUY" if z > 0 else "SELL"
+    return "BUY" if pred > 0 else "SELL"

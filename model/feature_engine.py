@@ -33,6 +33,25 @@ class FeatureTransformer:
             "hour_cos",
         ]
 
+    def add_multi_target(self, df):
+
+        df = df.copy()
+
+        df["future_close_short"] = df["close"].shift(-6)
+        df["future_close_long"] = df["close"].shift(-24)
+
+        df["target_short"] = np.tanh(
+            (df["future_close_short"] - df["close"]) / df["close"] * 100
+        )
+
+        df["target_long"] = np.tanh(
+            (df["future_close_long"] - df["close"]) / df["close"] * 100
+        )
+
+        df.dropna(inplace=True)
+
+        return df
+
     # ===============================
     # Technical Feature Block
     # ===============================

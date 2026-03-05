@@ -1,22 +1,63 @@
 import time
-import pandas as pd
+import numpy as np
+import MetaTrader5 as mt5
 
-from config import COOLDOWN_SECONDS, BOT_MODE
+from config import COOLDOWN_SECONDS, BOT_MODE, SYMBOL, SIGNAL_THRESHOLD
 from core.data_fetcher import initialize_mt5, get_mtf_data
 from core.predictor import Predictor
-from core.signal_engine import decide_signal
 from core.executor import execute_trade
 from core.logger import log
+from core.feature_engine_live import FeatureTransformerLive
 
-from model.feature_engine import FeatureTransformer
 
+# ==================================================
+# Prediction Memory Buffer
+# ==================================================
+
+prediction_buffer = []
+
+
+def smooth_prediction(pred):
+
+    prediction_buffer.append(pred)
+
+    if len(prediction_buffer) > 5:
+        prediction_buffer.pop(0)
+
+    return float(np.mean(prediction_buffer))
+
+
+# ==================================================
+# Capital Risk Setup
+# ==================================================
+
+def ask_capital():
+
+    try:
+        capital = float(input("Enter Trading Capital (USD): "))
+
+        if capital <= 0:
+            raise ValueError
+
+        return capital
+
+    except:
+        print("Invalid capital input. Using default 1000.")
+        return 1000.0
+
+
+# ==================================================
+# Main Bot Loop
+# ==================================================
 
 def main():
 
     initialize_mt5()
 
+    capital = ask_capital()
+
     predictor = Predictor()
-    transformer = FeatureTransformer()
+    transformer = FeatureTransformerLive()
 
     last_trade_time = 0
 
@@ -26,132 +67,84 @@ def main():
 
         try:
 
-            # ============================
-            # Fetch Multi Timeframe Data
-            # ============================
-
             df_m5, df_h1 = get_mtf_data()
 
             if df_m5 is None or df_h1 is None:
-                print("Market data fetch failed")
-                time.sleep(60)
+                time.sleep(30)
                 continue
 
-            # Sort timeline safety
-            df_m5 = df_m5.sort_values("time")
-            df_h1 = df_h1.sort_values("time")
-
-            # ============================
-            # Feature Engineering
-            # ============================
-
-            df_m5 = transformer.build_features(df_m5)
-            df_h1 = transformer.build_features(df_h1)
-
-            # ============================
-            # Prepare H1 Feature Mapping
-            # ============================
-
-            h1_cols_raw = ["ma20", "rsi", "trend_strength", "structure_bias"]
-
-            df_h1 = df_h1[["time"] + [c for c in h1_cols_raw if c in df_h1.columns]]
-
-            df_h1.rename(columns={
-                "ma20": "h1_ma20",
-                "rsi": "h1_rsi",
-                "trend_strength": "h1_trend_strength",
-                "structure_bias": "h1_structure_bias"
-            }, inplace=True)
-
-            # ============================
-            # Align H1 Timeline to M5 Timeline
-            # ============================
-
-            df_h1 = df_h1.set_index("time")
-            df_h1 = df_h1.reindex(df_m5["time"], method="ffill")
-            df_h1 = df_h1.reset_index()
-            df_h1.rename(columns={"index": "time"}, inplace=True)
-
-            # ============================
-            # Merge Feature Frames
-            # ============================
-
-            df = pd.concat(
-                [
-                    df_m5.reset_index(drop=True),
-                    df_h1.drop(columns=["time"], errors="ignore").reset_index(drop=True)
-                ],
-                axis=1
+            df = transformer.build_multi_timeframe_features(
+                df_m5.sort_values("time"),
+                df_h1.sort_values("time")
             )
 
-            # ============================
-            # Cross Timeframe Feature
-            # ============================
-
-            df["m5_h1_alignment"] = (
-                (df["structure_bias"] > 0) &
-                (df["h1_structure_bias"] > 0)
-            ).astype(int)
-
-            # ============================
-            # Prediction Pipeline Safety Check
-            # ============================
+            if df.empty:
+                time.sleep(30)
+                continue
 
             feature_list = transformer.get_feature_list()
 
-            if len(df) == 0:
-                print("Empty dataframe after merge")
+            X = df[feature_list].ffill().dropna()
+
+            if X.empty:
+                time.sleep(30)
+                continue
+
+            raw_pred = predictor.predict(X, feature_list)[-1]
+
+            pred = smooth_prediction(raw_pred)
+
+            # Confidence gating
+            if abs(pred) < SIGNAL_THRESHOLD:
+                print("Low confidence signal skipped")
                 time.sleep(60)
                 continue
 
-            missing_cols = [c for c in feature_list if c not in df.columns]
+            signal = "BUY" if pred > 0 else "SELL"
 
-            if missing_cols:
-                print("Missing features:", missing_cols)
-                time.sleep(60)
-                continue
-
-            X = df[feature_list].dropna()
-
-            if len(X) == 0:
-                print("Empty feature matrix")
-                time.sleep(60)
-                continue
-
-            pred_array = predictor.predict(X, feature_list)
-
-            if len(pred_array) == 0:
-                print("Prediction failed")
-                time.sleep(60)
-                continue
-
-            pred = pred_array[-1]
-
-            signal = decide_signal(pred)
+            print("Prediction:", pred)
+            print("Signal:", signal)
 
             now = time.time()
 
-            # ============================
-            # Execution Layer
-            # ============================
+            positions = mt5.positions_get(symbol=SYMBOL)
 
-            if signal and (now - last_trade_time > COOLDOWN_SECONDS):
+            # ==================================================
+            # Entry Logic
+            # ==================================================
 
-                log(f"Signal {signal} | Pred {pred}")
+            if positions is None or len(positions) == 0:
 
-                if BOT_MODE == "AUTO_DEMO":
-                    execute_trade(signal)
+                if now - last_trade_time > COOLDOWN_SECONDS:
 
-                elif BOT_MODE == "SEMI":
-                    print("Signal:", signal)
+                    log(f"{signal} | {pred}")
 
-                last_trade_time = now
+                    if BOT_MODE == "AUTO_DEMO":
+                        execute_trade(signal)
+
+                    last_trade_time = now
+
+            else:
+
+                # ==================================================
+                # Position Protection Layer
+                # ==================================================
+
+                pos = positions[0]
+
+                if pos.profit > 0.5 or pos.profit < -1.0:
+
+                    print("Brain exit protection triggered")
+
+                    opposite = "SELL" if pos.type == mt5.ORDER_TYPE_BUY else "BUY"
+
+                    execute_trade(opposite)
 
             time.sleep(60)
 
         except Exception as e:
             print("Bot Loop Error:", e)
-            time.sleep(60)
+            time.sleep(30)
 
 
 if __name__ == "__main__":

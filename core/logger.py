@@ -1,3 +1,5 @@
+# filename: logger.py
+
 import datetime
 
 def log(text):

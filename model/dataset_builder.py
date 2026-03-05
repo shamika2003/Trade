@@ -130,6 +130,24 @@ def build_dataset():
 
     df = df[abs(df["future_return"]) > noise_threshold]
 
+
+    # ======================
+    # Multi Target Labels
+    # ======================
+
+    df["future_close_short"] = df["close"].shift(-6)
+    df["future_close_long"] = df["close"].shift(-24)
+
+    df["target_short"] = np.tanh(
+        ((df["future_close_short"] - df["close"]) / df["close"]) * 100
+    )
+
+    df["target_long"] = np.tanh(
+        ((df["future_close_long"] - df["close"]) / df["close"]) * 100
+    )
+
+    df.drop(columns=["future_close_short", "future_close_long"], inplace=True)
+
     # ======================
     # Leakage Safety Trim
     # ======================
