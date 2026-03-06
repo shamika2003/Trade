@@ -24,7 +24,7 @@ class TradingBrainCore:
 
     def smooth_prediction(self, pred):
 
-        self.prediction_history.append(pred)
+        self.prediction_history.append(float(pred))
 
         if len(self.prediction_history) > 5:
             self.prediction_history.pop(0)
@@ -50,6 +50,9 @@ class TradingBrainCore:
 
     def _send_order(self, request):
 
+        if request is None:
+            return False
+
         for _ in range(3):
 
             result = mt5.order_send(request)
@@ -57,7 +60,7 @@ class TradingBrainCore:
             if result is not None and result.retcode == mt5.TRADE_RETCODE_DONE:
                 return True
 
-            time.sleep(0.5)
+            time.sleep(0.4)
 
         return False
 
@@ -73,17 +76,34 @@ class TradingBrainCore:
         if now - self.cooldown_timestamp < COOLDOWN_SECONDS:
             return
 
+        if df_features is None or df_features.empty:
+            return
+
         feature_list = self.transformer.get_feature_list()
+
+        # Feature safety projection
+        missing = [f for f in feature_list if f not in df_features.columns]
+        if missing:
+            return
 
         X = df_features[feature_list].ffill().dropna()
 
         if X.empty:
             return
 
-        raw_pred = self.predictor.predict(X, feature_list)[-1]
+        # Inject symbol metadata if required by predictor
+        if "symbol" in df_features.columns:
+            X = X.copy()
+            X["symbol"] = df_features["symbol"].iloc[-1]
 
-        pred = self.smooth_prediction(raw_pred)
+        raw_pred = self.predictor.predict(X, feature_list)
 
+        if raw_pred is None or len(raw_pred) == 0:
+            return
+
+        pred = self.smooth_prediction(raw_pred[-1])
+
+        # Hard clamp prediction
         pred = np.clip(pred, -2, 2)
 
         if abs(pred) < SIGNAL_THRESHOLD:
@@ -106,6 +126,9 @@ class TradingBrainCore:
 
             price = tick.ask if direction == "BUY" else tick.bid
 
+            if price is None or price <= 0:
+                return
+
             if self._open_trade(direction, price):
                 self.cooldown_timestamp = now
 
@@ -115,7 +138,7 @@ class TradingBrainCore:
         # EXIT LOGIC
         # =================================================
 
-        profit = position.profit
+        profit = float(position.profit)
 
         # Take profit exit
         if profit > 0.5:

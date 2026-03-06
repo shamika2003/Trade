@@ -7,19 +7,21 @@ from config import TRADE_LOT, MAX_OPEN_TRADES, MAX_TOTAL_TRADES
 
 
 # =====================================================
-# Position Capacity Control
+# Risk Protection Layer
 # =====================================================
 
 def can_open_trade(symbol):
 
-    # Symbol level protection
+    if not mt5.terminal_info():
+        print("MT5 terminal disconnected")
+        return False
+
     positions_symbol = mt5.positions_get(symbol=symbol)
 
     if positions_symbol is not None:
         if len(positions_symbol) >= MAX_OPEN_TRADES:
             return False
 
-    # Portfolio level protection
     positions_all = mt5.positions_get()
 
     if positions_all is not None:
@@ -36,20 +38,23 @@ def can_open_trade(symbol):
 
 class BrainExecutor:
 
-    # -----------------------------------------
-    # Internal Order Sender
-    # -----------------------------------------
-
     def _send_order(self, request):
 
+        if request is None:
+            return False
+
         for _ in range(3):
+
+            if not mt5.terminal_info():
+                print("MT5 connection lost")
+                return False
 
             result = mt5.order_send(request)
 
             if result is not None and result.retcode == mt5.TRADE_RETCODE_DONE:
                 return True
 
-            time.sleep(0.5)
+            time.sleep(0.4)
 
         return False
 
@@ -64,13 +69,11 @@ class BrainExecutor:
             return False
 
         if direction not in ["BUY", "SELL"]:
-            print("Invalid trade direction")
             return False
 
         tick = mt5.symbol_info_tick(symbol)
 
         if tick is None:
-            print(f"{symbol}: Tick data not available")
             return False
 
         if direction == "BUY":
@@ -81,7 +84,6 @@ class BrainExecutor:
             order_type = mt5.ORDER_TYPE_SELL
 
         if price is None or price <= 0:
-            print(f"{symbol}: Invalid market price")
             return False
 
         request = {
@@ -109,6 +111,9 @@ class BrainExecutor:
     # -----------------------------------------
 
     def close_position(self, position):
+
+        if position is None:
+            return False
 
         symbol = position.symbol
 

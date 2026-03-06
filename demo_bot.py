@@ -67,7 +67,6 @@ def main():
     transformer = FeatureTransformerLive()
     executor = BrainExecutor()
 
-    # Per-symbol state
     trade_managers = {s: TradeManager() for s in SYMBOLS}
     last_trade_times = {s: 0 for s in SYMBOLS}
 
@@ -76,6 +75,8 @@ def main():
     while True:
 
         try:
+
+            loop_start = time.time()
 
             for symbol in SYMBOLS:
 
@@ -89,22 +90,24 @@ def main():
                     df_h1
                 )
 
-                if df.empty:
+                if df is None or df.empty:
                     continue
+
+                df["symbol"] = symbol
 
                 feature_list = transformer.get_feature_list()
 
-                X = df[feature_list].ffill().dropna()
+                raw_pred_arr = predictor.predict(df, feature_list)
 
-                if X.empty:
+                if raw_pred_arr is None or len(raw_pred_arr) == 0:
                     continue
 
-                raw_pred = predictor.predict(X, feature_list)[-1]
+                raw_pred = raw_pred_arr[-1]
 
                 pred = smooth_prediction(symbol, raw_pred)
 
                 if abs(pred) < SIGNAL_THRESHOLD:
-                    print(symbol, "confidence", pred)
+                    print(symbol, "confidence", round(pred, 4))
                     continue
 
                 signal = "BUY" if pred > 0 else "SELL"
@@ -118,9 +121,7 @@ def main():
 
                 trade_manager = trade_managers[symbol]
 
-                # ==========================================
-                # ENTRY
-                # ==========================================
+                # ================= ENTRY =================
 
                 if positions is None or len(positions) == 0:
 
@@ -128,15 +129,12 @@ def main():
 
                         if BOT_MODE == "AUTO_DEMO":
 
-                            executor.open_trade(symbol, signal)
+                            if executor.open_trade(symbol, signal):
 
-                            trade_manager.reset()
+                                trade_manager.reset()
+                                last_trade_times[symbol] = now
 
-                            last_trade_times[symbol] = now
-
-                # ==========================================
-                # EXIT
-                # ==========================================
+                # ================= EXIT =================
 
                 else:
 
@@ -152,22 +150,27 @@ def main():
 
                         print(symbol, "Closing trade:", reason)
 
-                        executor.close_position(pos)
+                        if executor.close_position(pos):
 
-                        trade_manager.reset()
+                            trade_manager.reset()
+                            last_trade_times[symbol] = now
 
-                        last_trade_times[symbol] = now
+                            time.sleep(1)
 
-                        time.sleep(1)
+            # Adaptive loop delay (better CPU efficiency)
 
-            time.sleep(5)
+            elapsed = time.time() - loop_start
+
+            sleep_time = max(1, 5 - elapsed)
+
+            time.sleep(sleep_time)
 
         except Exception as e:
 
             print("Bot Loop Error:", e)
 
-            time.sleep(20)
-
+            time.sleep(10)
+            
 
 if __name__ == "__main__":
     main()

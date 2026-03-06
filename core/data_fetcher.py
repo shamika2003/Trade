@@ -18,9 +18,12 @@ def initialize_mt5():
 
     terminal = mt5.terminal_info()
 
-    print("MT5 Terminal Connected:", terminal is not None)
+    if terminal is None:
+        raise RuntimeError("MT5 terminal not reachable")
 
-    # Enable all configured symbols
+    print("MT5 Terminal Connected:", True)
+
+    # Enable configured symbols
     for symbol in SYMBOLS:
 
         symbol_info = mt5.symbol_info(symbol)
@@ -42,7 +45,7 @@ def initialize_mt5():
 
 def _fetch_rates(symbol, timeframe, n_bars, retry=3):
 
-    for _ in range(retry):
+    for attempt in range(retry):
 
         try:
 
@@ -53,21 +56,21 @@ def _fetch_rates(symbol, timeframe, n_bars, retry=3):
                 n_bars
             )
 
-            if rates is not None:
+            if rates is not None and len(rates) > 0:
 
                 df = pd.DataFrame(rates)
 
-                if not df.empty:
-                    df["time"] = pd.to_datetime(df["time"], unit="s")
-                    df["symbol"] = symbol
-                    return df
+                df["time"] = pd.to_datetime(df["time"], unit="s")
+                df["symbol"] = symbol
+
+                return df
 
         except Exception as e:
-            print(f"Market data fetch error ({symbol}):", e)
+            print(f"Market data fetch error ({symbol}) attempt {attempt+1}:", e)
 
-        print(f"Retry fetching market data for {symbol}...")
         time.sleep(1)
 
+    print(f"Failed fetching market data: {symbol}")
     return None
 
 
