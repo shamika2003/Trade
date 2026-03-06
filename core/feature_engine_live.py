@@ -116,9 +116,11 @@ class FeatureTransformerLive:
 
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
 
+        vol = df["return"].rolling(50).std()
+
         df["volatility_regime"] = (
-            df["return"].rolling(50).std().rank(pct=True)
-        ).fillna(0)
+            vol.rolling(200).rank(pct=True)
+        )
 
         return df
 

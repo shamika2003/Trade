@@ -3,21 +3,31 @@
 import MetaTrader5 as mt5
 import time
 
-from config import SYMBOL, TRADE_LOT, MAX_OPEN_TRADES
+from config import TRADE_LOT, MAX_OPEN_TRADES, MAX_TOTAL_TRADES
 
 
 # =====================================================
 # Position Capacity Control
 # =====================================================
 
-def can_open_trade():
+def can_open_trade(symbol):
 
-    positions = mt5.positions_get(symbol=SYMBOL)
+    # Symbol level protection
+    positions_symbol = mt5.positions_get(symbol=symbol)
 
-    if positions is None:
-        return True
+    if positions_symbol is not None:
+        if len(positions_symbol) >= MAX_OPEN_TRADES:
+            return False
 
-    return len(positions) < MAX_OPEN_TRADES
+    # Portfolio level protection
+    positions_all = mt5.positions_get()
+
+    if positions_all is not None:
+        if len(positions_all) >= MAX_TOTAL_TRADES:
+            print("Trade blocked: Portfolio trade limit reached")
+            return False
+
+    return True
 
 
 # =====================================================
@@ -47,20 +57,20 @@ class BrainExecutor:
     # Open Trade
     # -----------------------------------------
 
-    def open_trade(self, direction):
+    def open_trade(self, symbol, direction):
 
-        if not can_open_trade():
-            print("Trade blocked: Max position limit reached")
+        if not can_open_trade(symbol):
+            print(f"{symbol}: Trade blocked (risk limit)")
             return False
 
         if direction not in ["BUY", "SELL"]:
             print("Invalid trade direction")
             return False
 
-        tick = mt5.symbol_info_tick(SYMBOL)
+        tick = mt5.symbol_info_tick(symbol)
 
         if tick is None:
-            print("Tick data not available")
+            print(f"{symbol}: Tick data not available")
             return False
 
         if direction == "BUY":
@@ -71,12 +81,12 @@ class BrainExecutor:
             order_type = mt5.ORDER_TYPE_SELL
 
         if price is None or price <= 0:
-            print("Invalid market price")
+            print(f"{symbol}: Invalid market price")
             return False
 
         request = {
             "action": mt5.TRADE_ACTION_DEAL,
-            "symbol": SYMBOL,
+            "symbol": symbol,
             "volume": TRADE_LOT,
             "type": order_type,
             "price": price,
@@ -90,17 +100,19 @@ class BrainExecutor:
         success = self._send_order(request)
 
         if success:
-            print("Brain opened trade:", direction)
+            print(f"{symbol}: Brain opened trade {direction}")
 
         return success
 
     # -----------------------------------------
-    # Close Position (Ticket Based)
+    # Close Position
     # -----------------------------------------
 
     def close_position(self, position):
 
-        tick = mt5.symbol_info_tick(SYMBOL)
+        symbol = position.symbol
+
+        tick = mt5.symbol_info_tick(symbol)
 
         if tick is None:
             return False
@@ -114,7 +126,7 @@ class BrainExecutor:
 
         request = {
             "action": mt5.TRADE_ACTION_DEAL,
-            "symbol": SYMBOL,
+            "symbol": symbol,
             "volume": position.volume,
             "type": order_type,
             "position": position.ticket,
@@ -129,6 +141,6 @@ class BrainExecutor:
         success = self._send_order(request)
 
         if success:
-            print("Brain closed position")
+            print(f"{symbol}: Brain closed position")
 
         return success

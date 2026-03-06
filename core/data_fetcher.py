@@ -4,7 +4,7 @@ import MetaTrader5 as mt5
 import pandas as pd
 import time
 
-from config import SYMBOL
+from config import SYMBOLS
 
 
 # =====================================================
@@ -20,13 +20,18 @@ def initialize_mt5():
 
     print("MT5 Terminal Connected:", terminal is not None)
 
-    symbol_info = mt5.symbol_info(SYMBOL)
+    # Enable all configured symbols
+    for symbol in SYMBOLS:
 
-    if symbol_info is None:
-        raise RuntimeError(f"Symbol not found: {SYMBOL}")
+        symbol_info = mt5.symbol_info(symbol)
 
-    if not symbol_info.visible:
-        mt5.symbol_select(SYMBOL, True)
+        if symbol_info is None:
+            raise RuntimeError(f"Symbol not found: {symbol}")
+
+        if not symbol_info.visible:
+            mt5.symbol_select(symbol, True)
+
+        print(f"Symbol enabled: {symbol}")
 
     return True
 
@@ -35,14 +40,14 @@ def initialize_mt5():
 # Safe Rate Fetcher
 # =====================================================
 
-def _fetch_rates(timeframe, n_bars, retry=3):
+def _fetch_rates(symbol, timeframe, n_bars, retry=3):
 
     for _ in range(retry):
 
         try:
 
             rates = mt5.copy_rates_from_pos(
-                SYMBOL,
+                symbol,
                 timeframe,
                 0,
                 n_bars
@@ -54,12 +59,13 @@ def _fetch_rates(timeframe, n_bars, retry=3):
 
                 if not df.empty:
                     df["time"] = pd.to_datetime(df["time"], unit="s")
+                    df["symbol"] = symbol
                     return df
 
         except Exception as e:
-            print("Market data fetch error:", e)
+            print(f"Market data fetch error ({symbol}):", e)
 
-        print("Retry fetching market data...")
+        print(f"Retry fetching market data for {symbol}...")
         time.sleep(1)
 
     return None
@@ -69,14 +75,16 @@ def _fetch_rates(timeframe, n_bars, retry=3):
 # Multi-Timeframe Data Pipeline
 # =====================================================
 
-def get_mtf_data():
+def get_mtf_data(symbol):
 
     df_m5 = _fetch_rates(
+        symbol,
         mt5.TIMEFRAME_M5,
         2000
     )
 
     df_h1 = _fetch_rates(
+        symbol,
         mt5.TIMEFRAME_H1,
         2000
     )

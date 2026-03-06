@@ -17,7 +17,7 @@ MODEL_PATH = str(BASE_DIR / "model/trading_model.pkl")
 FUTURE_PERIOD = 12
 
 # Signal selectivity threshold
-SIGNAL_THRESHOLD = 0.2
+SIGNAL_THRESHOLD = 0.15
 
 # Spread noise protection
 SPREAD_COST = 0.0002
@@ -26,13 +26,14 @@ SPREAD_COST = 0.0002
 BOT_MODE = "AUTO_DEMO"   # AUTO_DEMO or SEMI
 
 # Market Settings
-SYMBOL = "EURUSD"
+SYMBOLS = ["EURUSD", "GBPUSD", "USDJPY"]
 TIMEFRAME = 5   # M5 timeframe
 
 # Execution Risk Control
 TRADE_LOT = 0.01
 COOLDOWN_SECONDS = 300
-MAX_OPEN_TRADES = 1
+MAX_OPEN_TRADES = 2
+MAX_TOTAL_TRADES = 5
 
 # Safety caps (added)
 MAX_RETRY_EXECUTION = 3

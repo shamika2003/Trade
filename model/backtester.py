@@ -1,4 +1,4 @@
-# backtester.py
+# filename: backtester.py
 
 import numpy as np
 from config import FUTURE_PERIOD, SPREAD_COST, SIGNAL_THRESHOLD
@@ -9,21 +9,26 @@ def run_backtest(df, predictions):
     df = df.reset_index(drop=True)
     predictions = np.array(predictions)
 
-    # ==============================
-    # 1. Normalize signal (z-score)
-    # ==============================
-    pred_mean = predictions.mean()
-    pred_std = predictions.std() + 1e-9
-    z = (predictions - pred_mean) / pred_std
+    if len(df) != len(predictions):
+        raise RuntimeError("Backtester: prediction length mismatch")
 
-    pnl = np.zeros(len(z))
+    # ==============================
+    # Signal Normalization (Local Z-score)
+    # ==============================
+
+    pred_std = predictions.std() + 1e-9
+    pred_mean = predictions.mean()
+
+    z_signal = (predictions - pred_mean) / pred_std
+
+    pnl = np.zeros(len(z_signal))
     trades = []
 
-    N = len(z) - FUTURE_PERIOD
+    N = len(z_signal) - FUTURE_PERIOD
 
     for i in range(N):
 
-        signal = z[i]
+        signal = z_signal[i]
 
         if abs(signal) < SIGNAL_THRESHOLD:
             continue
@@ -31,12 +36,12 @@ def run_backtest(df, predictions):
         price_now = df["close"].iloc[i]
         price_future = df["close"].iloc[i + FUTURE_PERIOD]
 
-        # Return-based PnL
         raw_return = (price_future - price_now) / price_now
+
         spread_return = SPREAD_COST / price_now
 
-        # Position sizing (confidence scaling)
-        position_size = np.clip(abs(signal) / 3, 0, 1)
+        # Confidence scaled position sizing
+        position_size = np.clip(abs(signal) / 3.0, 0, 1)
 
         if signal > 0:
             trade_pnl = position_size * (raw_return - spread_return)
@@ -61,26 +66,34 @@ def run_backtest(df, predictions):
     if pnl.std() > 0:
         sharpe = pnl.mean() / (pnl.std() + 1e-9)
 
-    # Annualized Sharpe (assuming M5 bars ~ 288 per day)
+    # M5 bars assumption
     sharpe_annual = sharpe * np.sqrt(288 * 252)
 
-    # Max Drawdown
     cumulative = np.cumsum(pnl)
     running_max = np.maximum.accumulate(cumulative)
     drawdown = cumulative - running_max
-    max_drawdown = drawdown.min()
+    max_drawdown = drawdown.min() if len(drawdown) > 0 else 0
 
     trade_count = len(trades)
-    trade_frequency = trade_count / N
+    trade_frequency = trade_count / max(N, 1)
 
     print("========== BACKTEST RESULTS ==========")
-    print("Total Return:", total_return)
-    print("Win Rate:", win_rate)
-    print("Sharpe Ratio:", sharpe)
-    print("Annualized Sharpe:", sharpe_annual)
-    print("Max Drawdown:", max_drawdown)
-    print("Number of Trades:", trade_count)
-    print("Trade Frequency:", trade_frequency)
+    print(f"Total Return      : {total_return:.6f}")
+    print(f"Win Rate          : {win_rate:.4f}")
+    print(f"Sharpe Ratio      : {sharpe:.6f}")
+    print(f"Annual Sharpe     : {sharpe_annual:.6f}")
+    print(f"Max Drawdown      : {max_drawdown:.6f}")
+    print(f"Number of Trades  : {trade_count}")
+    print(f"Trade Frequency   : {trade_frequency:.6f}")
     print("======================================")
 
-    return pnl
+    return {
+        "pnl": pnl,
+        "total_return": total_return,
+        "win_rate": win_rate,
+        "sharpe": sharpe,
+        "annual_sharpe": sharpe_annual,
+        "max_drawdown": max_drawdown,
+        "trade_count": trade_count,
+        "trade_frequency": trade_frequency
+    }

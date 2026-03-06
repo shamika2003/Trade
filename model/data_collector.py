@@ -11,14 +11,20 @@ class MarketDataCollector:
         self.connected = False
 
     def connect(self):
+
+        if self.connected:
+            return
+
         if not mt5.initialize():
             raise RuntimeError(f"MT5 initialize failed: {mt5.last_error()}")
 
         self.connected = True
 
     def disconnect(self):
-        mt5.shutdown()
-        self.connected = False
+
+        if self.connected:
+            mt5.shutdown()
+            self.connected = False
 
     def fetch_history(
         self,
@@ -29,12 +35,12 @@ class MarketDataCollector:
         retry_delay: float = 1.5
     ) -> pd.DataFrame | None:
 
-        if not self.connected:
-            self.connect()
+        self.connect()
 
         all_data = []
 
         try:
+
             for start in range(0, total_candles, chunk_size):
 
                 rates = mt5.copy_rates_from_pos(
@@ -45,32 +51,29 @@ class MarketDataCollector:
                 )
 
                 if rates is None or len(rates) == 0:
-                    print("Fetch warning:", mt5.last_error())
+
+                    print(f"{symbol} fetch warning:", mt5.last_error())
                     time.sleep(retry_delay)
                     continue
 
                 df_chunk = pd.DataFrame(rates)
+                df_chunk["symbol"] = symbol
+
                 all_data.append(df_chunk)
 
         except Exception as e:
-            print("Collector error:", e)
 
-        finally:
-            self.disconnect()
+            print(f"{symbol} collector error:", e)
 
         if not all_data:
             return None
 
-        # Combine chunks
         df = pd.concat(all_data, ignore_index=True)
 
-        # Remove duplicate candles (VERY IMPORTANT for ML training)
         df = df.drop_duplicates(subset=["time"])
 
-        # Convert timestamp
         df["time"] = pd.to_datetime(df["time"], unit="s")
 
-        # Sort chronologically
         df = df.sort_values("time").reset_index(drop=True)
 
         return df

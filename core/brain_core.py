@@ -4,18 +4,18 @@ import numpy as np
 import MetaTrader5 as mt5
 import time
 
-from config import SYMBOL, TRADE_LOT, SIGNAL_THRESHOLD, COOLDOWN_SECONDS
+from config import TRADE_LOT, SIGNAL_THRESHOLD, COOLDOWN_SECONDS
 
 
 class TradingBrainCore:
 
-    def __init__(self, predictor, transformer):
+    def __init__(self, symbol, predictor, transformer):
 
+        self.symbol = symbol
         self.predictor = predictor
         self.transformer = transformer
 
         self.prediction_history = []
-
         self.cooldown_timestamp = 0
 
     # =====================================================
@@ -37,7 +37,7 @@ class TradingBrainCore:
 
     def get_open_position(self):
 
-        positions = mt5.positions_get(symbol=SYMBOL)
+        positions = mt5.positions_get(symbol=self.symbol)
 
         if positions is None or len(positions) == 0:
             return None
@@ -91,7 +91,7 @@ class TradingBrainCore:
 
         position = self.get_open_position()
 
-        tick = mt5.symbol_info_tick(SYMBOL)
+        tick = mt5.symbol_info_tick(self.symbol)
 
         if tick is None:
             return
@@ -144,7 +144,7 @@ class TradingBrainCore:
 
         request = {
             "action": mt5.TRADE_ACTION_DEAL,
-            "symbol": SYMBOL,
+            "symbol": self.symbol,
             "volume": TRADE_LOT,
             "type": order_type,
             "price": price,
@@ -158,7 +158,7 @@ class TradingBrainCore:
         success = self._send_order(request)
 
         if success:
-            print("Brain opened trade:", direction)
+            print(f"{self.symbol} Brain opened trade:", direction)
 
         return success
 
@@ -166,7 +166,7 @@ class TradingBrainCore:
 
     def _close_position(self, position):
 
-        tick = mt5.symbol_info_tick(SYMBOL)
+        tick = mt5.symbol_info_tick(self.symbol)
 
         if tick is None:
             return False
@@ -180,7 +180,7 @@ class TradingBrainCore:
 
         request = {
             "action": mt5.TRADE_ACTION_DEAL,
-            "symbol": SYMBOL,
+            "symbol": self.symbol,
             "volume": position.volume,
             "type": order_type,
             "position": position.ticket,

@@ -96,18 +96,18 @@ class FeatureTransformer:
         df[f"{prefix}trend"] = df[f"{prefix}ma5"] - df[f"{prefix}ma20"]
 
         # Derived signals
-        df["volume_change"] = df["tick_volume"].pct_change()
+        df[f"{prefix}volume_change"] = df["tick_volume"].pct_change()
 
-        df["atr_ratio"] = df[f"{prefix}range"] / (df[f"{prefix}atr"] + eps)
+        df[f"{prefix}atr_ratio"] = df[f"{prefix}range"] / (df[f"{prefix}atr"] + eps)
 
         high20 = df["high"].rolling(20).max()
         low20 = df["low"].rolling(20).min()
 
-        df["range_position"] = (price - low20) / (high20 - low20 + eps)
-        df["range_position"] = df["range_position"].clip(0, 1)
+        df[f"{prefix}range_position"] = (price - low20) / (high20 - low20 + eps)
+        df[f"{prefix}range_position"] = df[f"{prefix}range_position"].clip(0, 1)
 
         # Trend strength proxy
-        df["trend_strength"] = df[f"{prefix}trend"] / (price + eps)
+        df[f"{prefix}trend_strength"] = df[f"{prefix}trend"] / (price + eps)
 
         df["volatility"] = df[f"{prefix}return"].rolling(20).std()
 
@@ -166,9 +166,10 @@ class FeatureTransformer:
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
 
         # Regime score proxy
+        vol = df["return"].rolling(50).std()
+
         df["volatility_regime"] = (
-            df["return"].rolling(50).std()
-            .rank(pct=True)
+            vol.rolling(200).rank(pct=True)
         )
 
         return df
@@ -181,11 +182,23 @@ class FeatureTransformer:
 
         df = df.copy()
 
-        df = df.sort_values("time").reset_index(drop=True)
+        df = df.sort_values("time")
 
-        df = self._technical(df, prefix="")
+        # If multi-symbol dataset
+        if "symbol" in df.columns:
+
+            df = (
+                df
+                .groupby("symbol", group_keys=False)
+                .apply(lambda x: self._technical(x))
+            )
+
+        else:
+            df = self._technical(df)
 
         df.dropna(inplace=True)
+
+        df = df.reset_index(drop=True)
 
         return df
 

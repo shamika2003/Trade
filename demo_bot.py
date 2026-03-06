@@ -4,32 +4,38 @@ import time
 import numpy as np
 import MetaTrader5 as mt5
 
-from config import COOLDOWN_SECONDS, BOT_MODE, SYMBOL, SIGNAL_THRESHOLD
+from config import COOLDOWN_SECONDS, BOT_MODE, SYMBOLS, SIGNAL_THRESHOLD
 from core.data_fetcher import initialize_mt5, get_mtf_data
 from core.predictor import Predictor
 from core.executor import BrainExecutor
 from core.feature_engine_live import FeatureTransformerLive
+from core.trade_manager import TradeManager
 
 
 # ==================================================
-# Prediction Memory Buffer
+# Prediction Memory (per symbol)
 # ==================================================
 
-prediction_buffer = []
+prediction_buffers = {}
 
 
-def smooth_prediction(pred):
+def smooth_prediction(symbol, pred):
 
-    prediction_buffer.append(pred)
+    if symbol not in prediction_buffers:
+        prediction_buffers[symbol] = []
 
-    if len(prediction_buffer) > 5:
-        prediction_buffer.pop(0)
+    buf = prediction_buffers[symbol]
 
-    return float(np.mean(prediction_buffer))
+    buf.append(pred)
+
+    if len(buf) > 5:
+        buf.pop(0)
+
+    return float(np.mean(buf))
 
 
 # ==================================================
-# Capital Setup (Reserved for Future Risk Engine)
+# Capital Setup
 # ==================================================
 
 def ask_capital():
@@ -61,106 +67,106 @@ def main():
     transformer = FeatureTransformerLive()
     executor = BrainExecutor()
 
-    last_trade_time = 0
+    # Per-symbol state
+    trade_managers = {s: TradeManager() for s in SYMBOLS}
+    last_trade_times = {s: 0 for s in SYMBOLS}
 
-    print("Autonomous Brain Bot Started...")
+    print("Autonomous Multi-Symbol Brain Bot Started...")
 
     while True:
 
         try:
 
-            df_m5, df_h1 = get_mtf_data()
+            for symbol in SYMBOLS:
 
-            if df_m5 is None or df_h1 is None:
-                time.sleep(30)
-                continue
+                df_m5, df_h1 = get_mtf_data(symbol)
 
-            df = transformer.build_multi_timeframe_features(
-                df_m5,
-                df_h1
-            )
-
-            if df.empty:
-                time.sleep(30)
-                continue
-
-            feature_list = transformer.get_feature_list()
-
-            X = df[feature_list].ffill().dropna()
-
-            if X.empty:
-                time.sleep(30)
-                continue
-
-            raw_pred = predictor.predict(X, feature_list)[-1]
-
-            pred = smooth_prediction(raw_pred)
-
-            if abs(pred) < SIGNAL_THRESHOLD:
-                print("Low confidence signal skipped")
-                time.sleep(60)
-                continue
-
-            signal = "BUY" if pred > 0 else "SELL"
-
-            print("Prediction:", round(pred, 4))
-            print("Signal:", signal)
-
-            now = time.time()
-
-            positions = mt5.positions_get(symbol=SYMBOL)
-
-            # ==================================================
-            # Entry Logic
-            # ==================================================
-
-            if positions is None or len(positions) == 0:
-
-                if now - last_trade_time > COOLDOWN_SECONDS:
-
-                    if BOT_MODE == "AUTO_DEMO":
-                        executor.open_trade(signal)
-
-                    last_trade_time = now
-
-            # ==================================================
-            # Exit Logic
-            # ==================================================
-
-            else:
-
-                pos = positions[0]
-
-                # Take profit exit
-                if pos.profit > 0.5:
-
-                    print("Brain Take Profit Exit")
-
-                    executor.close_position(pos)
-
-                    last_trade_time = now
-
-                    time.sleep(2)
+                if df_m5 is None or df_h1 is None:
                     continue
 
-                # Stop loss exit
-                if pos.profit < -1.0:
+                df = transformer.build_multi_timeframe_features(
+                    df_m5,
+                    df_h1
+                )
 
-                    print("Brain Stop Loss Exit")
-
-                    executor.close_position(pos)
-
-                    last_trade_time = now
-
-                    time.sleep(2)
+                if df.empty:
                     continue
 
-            time.sleep(60)
+                feature_list = transformer.get_feature_list()
+
+                X = df[feature_list].ffill().dropna()
+
+                if X.empty:
+                    continue
+
+                raw_pred = predictor.predict(X, feature_list)[-1]
+
+                pred = smooth_prediction(symbol, raw_pred)
+
+                if abs(pred) < SIGNAL_THRESHOLD:
+                    print(symbol, "confidence", pred)
+                    continue
+
+                signal = "BUY" if pred > 0 else "SELL"
+
+                print(symbol, "Prediction:", round(pred, 4))
+                print(symbol, "Signal:", signal)
+
+                now = time.time()
+
+                positions = mt5.positions_get(symbol=symbol)
+
+                trade_manager = trade_managers[symbol]
+
+                # ==========================================
+                # ENTRY
+                # ==========================================
+
+                if positions is None or len(positions) == 0:
+
+                    if now - last_trade_times[symbol] > COOLDOWN_SECONDS:
+
+                        if BOT_MODE == "AUTO_DEMO":
+
+                            executor.open_trade(symbol, signal)
+
+                            trade_manager.reset()
+
+                            last_trade_times[symbol] = now
+
+                # ==========================================
+                # EXIT
+                # ==========================================
+
+                else:
+
+                    pos = positions[0]
+
+                    profit = pos.profit
+
+                    trade_manager.update(profit)
+
+                    close, reason = trade_manager.should_close(profit)
+
+                    if close:
+
+                        print(symbol, "Closing trade:", reason)
+
+                        executor.close_position(pos)
+
+                        trade_manager.reset()
+
+                        last_trade_times[symbol] = now
+
+                        time.sleep(1)
+
+            time.sleep(5)
 
         except Exception as e:
 
             print("Bot Loop Error:", e)
-            time.sleep(30)
+
+            time.sleep(20)
 
 
 if __name__ == "__main__":

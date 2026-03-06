@@ -1,4 +1,4 @@
-# evaluator.py
+# filename: evaluator.py
 
 import pandas as pd
 import numpy as np
@@ -20,54 +20,88 @@ def evaluate():
     print("Loading trained ensemble model...")
     model_dict = joblib.load(MODEL_PATH)
 
-    X = df[features]
+    if "symbol" not in df.columns:
+        raise RuntimeError("Dataset missing symbol column")
 
-    # ==============================
-    # Regime Split
-    # ==============================
+    all_symbols = df["symbol"].unique()
 
-    regime_threshold = df["volatility_regime"].median()
+    print("\nEvaluating symbols:", all_symbols)
 
-    high_mask = df["volatility_regime"] > regime_threshold
-    low_mask = ~high_mask
+    for symbol in all_symbols:
 
-    predictions = np.zeros(len(df))
+        print(f"\n========== Evaluating {symbol} ==========")
 
-    # ==============================
-    # HIGH VOLATILITY REGIME
-    # ==============================
+        df_symbol = df[df["symbol"] == symbol].copy()
 
-    if high_mask.sum() > 0:
+        df_symbol = df_symbol.reset_index(drop=True)
 
-        short_pred = model_dict["high_short"].predict(X.loc[high_mask])
-        long_pred = model_dict["high_long"].predict(X.loc[high_mask])
+        X = df_symbol[features]
 
-        predictions[high_mask] = (short_pred + long_pred) / 2
+        # ==============================
+        # Regime Split (Symbol Local)
+        # ==============================
 
-    # ==============================
-    # LOW VOLATILITY REGIME
-    # ==============================
+        regime_threshold = df_symbol["volatility_regime"].median()
 
-    if low_mask.sum() > 0:
+        high_mask = df_symbol["volatility_regime"] > regime_threshold
+        low_mask = ~high_mask
 
-        short_pred = model_dict["low_short"].predict(X.loc[low_mask])
-        long_pred = model_dict["low_long"].predict(X.loc[low_mask])
+        predictions = np.zeros(len(df_symbol))
 
-        predictions[low_mask] = (short_pred + long_pred) / 2
+        # ==============================
+        # HIGH VOLATILITY REGIME
+        # ==============================
 
-    # ==============================
-    # Run Backtest
-    # ==============================
+        if high_mask.sum() > 0:
 
-    run_backtest(df.reset_index(drop=True), predictions)
+            short_pred = model_dict["high_short"].predict(
+                X.loc[high_mask]
+            )
 
-    print("\nPrediction stats:")
-    print(pd.Series(predictions).describe())
+            long_pred = model_dict["high_long"].predict(
+                X.loc[high_mask]
+            )
 
-    if "future_return" in df.columns:
+            predictions[high_mask] = (short_pred + long_pred) / 2
 
-        corr = np.corrcoef(predictions, df["future_return"])[0, 1]
-        print("Prediction correlation:", corr)
+        # ==============================
+        # LOW VOLATILITY REGIME
+        # ==============================
+
+        if low_mask.sum() > 0:
+
+            short_pred = model_dict["low_short"].predict(
+                X.loc[low_mask]
+            )
+
+            long_pred = model_dict["low_long"].predict(
+                X.loc[low_mask]
+            )
+
+            predictions[low_mask] = (short_pred + long_pred) / 2
+
+        # ==============================
+        # Backtest per Symbol
+        # ==============================
+
+        run_backtest(
+            df_symbol.reset_index(drop=True),
+            predictions
+        )
+
+        print("\nPrediction stats:")
+        print(pd.Series(predictions).describe())
+
+        if "future_return" in df_symbol.columns:
+
+            corr = np.corrcoef(
+                predictions,
+                df_symbol["future_return"]
+            )[0, 1]
+
+            print("Prediction correlation:", corr)
+
+    print("\nMulti-symbol evaluation completed.")
 
 
 if __name__ == "__main__":

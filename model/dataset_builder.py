@@ -5,159 +5,190 @@ import numpy as np
 import MetaTrader5 as mt5
 
 from data_collector import MarketDataCollector
-from config import FUTURE_PERIOD, DATA_PATH
+from config import FUTURE_PERIOD, DATA_PATH, SYMBOLS
 from feature_engine import FeatureTransformer
 
 
 def build_dataset():
 
     collector = MarketDataCollector()
-
-    # ======================
-    # Fetch M5 Data
-    # ======================
-    df_m5 = collector.fetch_history(
-        symbol="EURUSD",
-        timeframe=mt5.TIMEFRAME_M5,
-        total_candles=500000
-    )
-
-    if df_m5 is None:
-        raise RuntimeError("Dataset build failed `M5`")
-
-    df_m5 = df_m5.sort_values("time").reset_index(drop=True)
-
-    # ======================
-    # Fetch H1 Data
-    # ======================
-    df_h1 = collector.fetch_history(
-        symbol="EURUSD",
-        timeframe=mt5.TIMEFRAME_H1,
-        total_candles=40000
-    )
-
-    if df_h1 is None:
-        raise RuntimeError("Dataset build failed `H1`")
-
-    df_h1 = df_h1.sort_values("time").reset_index(drop=True)
-
     transformer = FeatureTransformer()
 
-    # ======================
-    # Technical Feature Engineering
-    # ======================
-    df_m5 = transformer.build_features(df_m5)
-    df_h1 = transformer.build_features(df_h1)
+    all_symbol_data = []
 
-    # ======================
-    # Select H1 Context Features
-    # ======================
-    h1_cols = ["time", "ma20", "rsi", "trend_strength"]
+    for symbol in SYMBOLS:
 
-    df_h1 = df_h1[h1_cols].copy()
+        print(f"\nBuilding dataset for {symbol}")
 
-    df_h1.rename(columns={
-        "ma20": "h1_ma20",
-        "rsi": "h1_rsi",
-        "trend_strength": "h1_trend_strength"
-    }, inplace=True)
+        # ======================
+        # Fetch M5 Data
+        # ======================
 
-    # ======================
-    # Merge Multi-Timeframe Data
-    # ======================
-    df = pd.merge_asof(
-        df_m5.sort_values("time"),
-        df_h1.sort_values("time"),
-        on="time",
-        direction="backward"
-    )
+        df_m5 = collector.fetch_history(
+            symbol=symbol,
+            timeframe=mt5.TIMEFRAME_M5,
+            total_candles=500000
+        )
 
-    # ======================
-    # Alignment Features
-    # ======================
-    df["h1_trend_bias"] = np.sign(df["h1_trend_strength"])
+        if df_m5 is None:
+            print(f"{symbol} M5 data failed")
+            continue
 
-    df["m5_h1_alignment"] = (
-        np.sign(df["trend_strength"]) ==
-        np.sign(df["h1_trend_strength"])
-    ).astype(int)
+        df_m5 = df_m5.sort_values("time").reset_index(drop=True)
 
-    # ======================
-    # Future Return Target
-    # ======================
-    future_close = df["close"].shift(-FUTURE_PERIOD)
+        # ======================
+        # Fetch H1 Data
+        # ======================
 
-    raw_return = (future_close - df["close"]) / df["close"]
+        df_h1 = collector.fetch_history(
+            symbol=symbol,
+            timeframe=mt5.TIMEFRAME_H1,
+            total_candles=40000
+        )
 
-    # Use rolling volatility as risk normalizer
-    vol = df["return"].rolling(20).std()
+        if df_h1 is None:
+            print(f"{symbol} H1 data failed")
+            continue
 
-    risk_adjusted_return = raw_return / (vol + 1e-9)
+        df_h1 = df_h1.sort_values("time").reset_index(drop=True)
 
-    # Bound extreme values (stable training)
-    df["future_return"] = np.tanh(risk_adjusted_return)
+        # ======================
+        # Feature Engineering
+        # ======================
 
-    # ======================
-    # Regime Feature
-    # ======================
-    df["volatility"] = df["future_return"].rolling(20).std()
+        df_m5 = transformer.build_features(df_m5)
+        df_h1 = transformer.build_features(df_h1)
 
-    df["volatility_regime"] = np.where(
-        df["volatility"] > df["volatility"].quantile(0.75),
-        1,
-        0
-    )
+        # ======================
+        # Select H1 Context
+        # ======================
 
-    df["price_zscore"] = (
-        df["close"] - df["close"].rolling(1000).mean()
-    ) / (df["close"].rolling(1000).std() + 1e-9)
+        h1_cols = ["time", "ma20", "rsi", "trend_strength"]
 
-    # ======================
-    # Momentum Context Feature
-    # ======================
-    df["momentum_context"] = df["close"].pct_change(10)
+        df_h1 = df_h1[h1_cols].copy()
 
-    # ======================
-    # Spread Safety Handling
-    # ======================
-    if "spread" not in df.columns:
-        df["spread"] = 0
+        df_h1.rename(columns={
+            "ma20": "h1_ma20",
+            "rsi": "h1_rsi",
+            "trend_strength": "h1_trend_strength"
+        }, inplace=True)
 
-    # ======================
-    # Noise Filtering
-    # ======================
-    noise_threshold = 0.00005
+        # ======================
+        # Merge MTF
+        # ======================
 
-    df = df[abs(df["future_return"]) > noise_threshold]
+        df = pd.merge_asof(
+            df_m5.sort_values("time"),
+            df_h1.sort_values("time"),
+            on="time",
+            direction="backward"
+        )
 
+        # ======================
+        # Alignment Signals
+        # ======================
 
-    # ======================
-    # Multi Target Labels
-    # ======================
+        df["h1_trend_bias"] = np.sign(df["h1_trend_strength"])
 
-    df["future_close_short"] = df["close"].shift(-6)
-    df["future_close_long"] = df["close"].shift(-24)
+        df["m5_h1_alignment"] = (
+            np.sign(df["trend_strength"]) ==
+            np.sign(df["h1_trend_strength"])
+        ).astype(int)
 
-    df["target_short"] = np.tanh(
-        ((df["future_close_short"] - df["close"]) / df["close"]) * 100
-    )
+        # ======================
+        # Target Construction
+        # ======================
 
-    df["target_long"] = np.tanh(
-        ((df["future_close_long"] - df["close"]) / df["close"]) * 100
-    )
+        future_close = df["close"].shift(-FUTURE_PERIOD)
 
-    df.drop(columns=["future_close_short", "future_close_long"], inplace=True)
+        raw_return = (future_close - df["close"]) / df["close"]
 
-    # ======================
-    # Leakage Safety Trim
-    # ======================
-    df = df.iloc[:-FUTURE_PERIOD].copy()
+        vol = df["return"].rolling(20).std()
 
-    df.dropna(inplace=True)
+        risk_adjusted_return = raw_return / (vol + 1e-9)
 
-    df.to_csv(DATA_PATH, index=False)
+        df["future_return"] = np.tanh(risk_adjusted_return)
 
-    print("Dataset built successfully.")
+        # ======================
+        # Regime Features
+        # ======================
+
+        df["volatility"] = df["return"].rolling(20).std()
+
+        vol = df["return"].rolling(20).std()
+
+        threshold = vol.rolling(500).quantile(0.75)
+
+        df["volatility_regime"] = (vol > threshold).astype(int)
+
+        df["price_zscore"] = (
+            df["close"] - df["close"].rolling(1000).mean()
+        ) / (df["close"].rolling(1000).std() + 1e-9)
+
+        # ======================
+        # Momentum Context
+        # ======================
+
+        df["momentum_context"] = df["close"].pct_change(10)
+
+        # ======================
+        # Spread Safety
+        # ======================
+
+        if "spread" not in df.columns:
+            df["spread"] = 0
+
+        # ======================
+        # Noise Filter
+        # ======================
+
+        noise_threshold = 0.00005
+        df = df[abs(df["future_return"]) > noise_threshold]
+
+        # ======================
+        # Multi Targets
+        # ======================
+
+        df["future_close_short"] = df["close"].shift(-6)
+        df["future_close_long"] = df["close"].shift(-24)
+
+        df["target_short"] = np.tanh(
+            ((df["future_close_short"] - df["close"]) / df["close"]) * 100
+        )
+
+        df["target_long"] = np.tanh(
+            ((df["future_close_long"] - df["close"]) / df["close"]) * 100
+        )
+
+        df.drop(
+            columns=["future_close_short", "future_close_long"],
+            inplace=True
+        )
+
+        # ======================
+        # Leakage Safety
+        # ======================
+
+        df = df.iloc[:-FUTURE_PERIOD].copy()
+
+        df.dropna(inplace=True)
+
+        df["symbol"] = symbol
+
+        all_symbol_data.append(df)
+
+    collector.disconnect()
+
+    if not all_symbol_data:
+        raise RuntimeError("Dataset build failed for all symbols")
+
+    final_df = pd.concat(all_symbol_data, ignore_index=True)
+
+    final_df.to_csv(DATA_PATH, index=False)
+
+    print("\nDataset built successfully.")
+    print("Total rows:", len(final_df))
+    print("Symbols:", final_df["symbol"].unique())
 
 
 if __name__ == "__main__":
