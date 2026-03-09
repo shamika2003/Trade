@@ -4,85 +4,99 @@ class TradeManager:
 
     def __init__(self):
 
-        # tracking
-        self.max_profit_seen = 0
-        self.break_even_activated = False
-        self.profit_buffer = []
+        # ------------------------------
+        # Tracking State
+        # ------------------------------
 
-        # parameters
+        self.max_profit_seen = -999999
+        self.break_even_activated = False
+
+        # ------------------------------
+        # Risk Parameters
+        # ------------------------------
+
         self.break_even_trigger = 0.30
         self.trailing_start = 0.40
         self.trailing_ratio = 0.60
         self.hard_stop = -1.20
 
-        # stability controls
-        self.buffer_size = 3
-        self.spike_filter = 2.5
+        # ------------------------------
+        # Exit Stability Controls
+        # ------------------------------
 
-    # ==========================================
+        self.exit_buffer = []
+        self.buffer_size = 2
+        self.exit_hysteresis = 0.03
+
+    # =====================================================
     # Reset State
-    # ==========================================
+    # =====================================================
 
     def reset(self):
 
-        self.max_profit_seen = 0
+        self.max_profit_seen = -999999
         self.break_even_activated = False
-        self.profit_buffer = []
+        self.exit_buffer = []
 
-    # ==========================================
-    # Profit Smoothing
-    # ==========================================
+    # =====================================================
+    # Exit Signal Smoother (Only for Decision Stability)
+    # =====================================================
 
-    def _smooth_profit(self, profit):
+    def _smooth_exit_signal(self, close_signal):
 
-        self.profit_buffer.append(profit)
+        self.exit_buffer.append(int(close_signal))
 
-        if len(self.profit_buffer) > self.buffer_size:
-            self.profit_buffer.pop(0)
+        if len(self.exit_buffer) > self.buffer_size:
+            self.exit_buffer.pop(0)
 
-        return sum(self.profit_buffer) / len(self.profit_buffer)
+        return sum(self.exit_buffer) >= 1
 
-    # ==========================================
-    # Update State
-    # ==========================================
+    # =====================================================
+    # State Update (Peak Tracking Only)
+    # =====================================================
 
     def update(self, profit):
 
-        profit = self._smooth_profit(profit)
-
-        # filter extreme spikes
-        if profit > self.max_profit_seen * self.spike_filter and self.max_profit_seen > 0:
-            return
-
+        # Peak profit memory
         if profit > self.max_profit_seen:
             self.max_profit_seen = profit
 
-        # activate break-even
+        # Breakeven activation
         if profit >= self.break_even_trigger:
             self.break_even_activated = True
 
-    # ==========================================
-    # Exit Decision
-    # ==========================================
+    # =====================================================
+    # Exit Decision Engine
+    # =====================================================
 
     def should_close(self, profit):
 
-        profit = self._smooth_profit(profit)
+        close_signal = False
 
-        # HARD STOP LOSS
+        # ------------------------------
+        # Hard Stop Loss
+        # ------------------------------
+
         if profit <= self.hard_stop:
-            return True, "HARD_STOP"
+            close_signal = True
 
-        # BREAK EVEN PROTECTION
-        if self.break_even_activated and profit < 0:
-            return True, "BREAKEVEN_PROTECTION"
+        # ------------------------------
+        # Breakeven Protection
+        # ------------------------------
 
-        # TRAILING EXIT
-        if self.max_profit_seen > self.trailing_start:
+        elif self.break_even_activated and profit < -self.exit_hysteresis:
+            close_signal = True
+
+        # ------------------------------
+        # Trailing Exit Logic
+        # ------------------------------
+
+        elif self.max_profit_seen > self.trailing_start:
 
             trail_level = self.max_profit_seen * self.trailing_ratio
 
-            if profit < trail_level:
-                return True, "TRAILING_EXIT"
+            if profit < (trail_level - self.exit_hysteresis):
+                close_signal = True
 
-        return False, None
+        return self._smooth_exit_signal(close_signal), \
+               ("AUTO_EXIT" if close_signal else None)
