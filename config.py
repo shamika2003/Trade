@@ -17,7 +17,7 @@ MODEL_PATH = str(BASE_DIR / "model/trading_model.pkl")
 FUTURE_PERIOD = 12
 
 # Signal selectivity threshold
-SIGNAL_THRESHOLD = 0.025
+SIGNAL_THRESHOLD = 0.02
 
 # Spread noise protection
 SPREAD_COST = 0.0002
