@@ -12,19 +12,26 @@ def run_backtest(df, predictions):
     if len(df) != len(predictions):
         raise RuntimeError("Backtester: prediction length mismatch")
 
-    # ==============================
-    # Signal Normalization (Local Z-score)
-    # ==============================
+    # =====================================
+    # Clean predictions
+    # =====================================
 
-    pred_std = predictions.std() + 1e-9
+    predictions = np.nan_to_num(predictions)
+
+    # =====================================
+    # Signal normalization (z-score)
+    # =====================================
+
     pred_mean = predictions.mean()
+    pred_std = predictions.std() + 1e-9
 
     z_signal = (predictions - pred_mean) / pred_std
 
-    pnl = np.zeros(len(z_signal))
+    pnl = []
     trades = []
 
-    N = len(z_signal) - FUTURE_PERIOD
+    # Leave room for entry + exit candles
+    N = len(z_signal) - FUTURE_PERIOD - 1
 
     for i in range(N):
 
@@ -33,49 +40,73 @@ def run_backtest(df, predictions):
         if abs(signal) < SIGNAL_THRESHOLD:
             continue
 
-        price_now = df["close"].iloc[i]
-        price_future = df["close"].iloc[i + FUTURE_PERIOD]
+        # =====================================
+        # Trade execution
+        # =====================================
 
-        raw_return = (price_future - price_now) / price_now
+        # Enter next candle (no lookahead)
+        entry_price = df["open"].iloc[i + 1]
 
-        spread_return = SPREAD_COST / price_now
+        # Exit after FUTURE_PERIOD
+        exit_price = df["close"].iloc[i + 1 + FUTURE_PERIOD]
 
-        # Confidence scaled position sizing
+        raw_return = (exit_price - entry_price) / entry_price
+
+        # Spread cost
+        spread_cost = SPREAD_COST
+
+        # =====================================
+        # Position sizing (confidence scaling)
+        # =====================================
+
         position_size = np.clip(abs(signal) / 3.0, 0, 1)
 
         if signal > 0:
-            trade_pnl = position_size * (raw_return - spread_return)
+            trade_pnl = position_size * (raw_return - spread_cost)
         else:
-            trade_pnl = position_size * (-raw_return - spread_return)
+            trade_pnl = position_size * (-raw_return - spread_cost)
 
-        pnl[i] = trade_pnl
+        pnl.append(trade_pnl)
         trades.append(trade_pnl)
 
     pnl = np.array(pnl)
     trades = np.array(trades)
 
-    # ==============================
-    # Metrics
-    # ==============================
+    # =====================================
+    # Performance Metrics
+    # =====================================
+
+    if len(pnl) == 0:
+        print("No trades executed.")
+        return {}
 
     total_return = pnl.sum()
 
-    win_rate = (trades > 0).mean() if len(trades) > 0 else 0
+    win_rate = (trades > 0).mean()
 
+    # Sharpe ratio (trade-based)
     sharpe = 0
-    if pnl.std() > 0:
-        sharpe = pnl.mean() / (pnl.std() + 1e-9)
+    if trades.std() > 0:
+        sharpe = trades.mean() / (trades.std() + 1e-9)
 
     # M5 bars assumption
     sharpe_annual = sharpe * np.sqrt(288 * 252)
 
     cumulative = np.cumsum(pnl)
+
     running_max = np.maximum.accumulate(cumulative)
+
     drawdown = cumulative - running_max
-    max_drawdown = drawdown.min() if len(drawdown) > 0 else 0
+
+    max_drawdown = drawdown.min()
 
     trade_count = len(trades)
+
     trade_frequency = trade_count / max(N, 1)
+
+    # =====================================
+    # Output
+    # =====================================
 
     print("========== BACKTEST RESULTS ==========")
     print(f"Total Return      : {total_return:.6f}")

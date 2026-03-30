@@ -161,8 +161,8 @@ def train():
         print("Training final ensemble models...")
 
         # Regime split
-        high_mask = symbol_df["volatility_regime"] == 1
-        low_mask = symbol_df["volatility_regime"] == 0
+        high_mask = symbol_df["volatility_regime"] > 0.7
+        low_mask = symbol_df["volatility_regime"] < 0.3
 
         X_high = X[high_mask]
         X_low = X[low_mask]
