@@ -1,5 +1,12 @@
 market_dataset.csv
+executor_log.csv
 *.csv
+
+
+# log
+bot_log.txt
+*.txt
+
 
 # Python cache
 __pycache__/
