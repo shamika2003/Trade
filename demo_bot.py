@@ -58,6 +58,7 @@ def stop_bot(sig, frame):
     global running
     running = False
     log("INFO | Bot received shutdown signal. Exiting gracefully...")
+
 signal.signal(signal.SIGINT, stop_bot)
 signal.signal(signal.SIGTERM, stop_bot)
 
@@ -89,9 +90,10 @@ def main():
 
     predictor = Predictor()
     transformer = FeatureTransformerLive()
-    executor = BrainExecutor(capital=capital)  # <- pass capital now
+    executor = BrainExecutor(capital=capital)
 
-    trade_managers = {s: TradeManager() for s in SYMBOLS}
+    # Trade managers per symbol
+    trade_managers = {s: TradeManager(hard_stop=-STOP_LOSS) for s in SYMBOLS}
     active_symbols = set()
     last_trade_times = {s: 0 for s in SYMBOLS}
 
@@ -110,6 +112,7 @@ def main():
                     time.sleep(5)
                     continue
 
+                # Fetch multi-timeframe data
                 df_m5, df_h1 = get_mtf_data(symbol)
                 if df_m5 is None or df_h1 is None:
                     continue
@@ -138,24 +141,35 @@ def main():
                 positions = mt5.positions_get(symbol=symbol) or []
                 trade_manager = trade_managers[symbol]
 
+                # ======================
                 # ENTRY
+                # ======================
                 if not positions:
                     if symbol in active_symbols:
                         continue
                     if now - last_trade_times[symbol] > COOLDOWN_SECONDS and BOT_MODE.startswith("AUTO"):
                         if can_open_trade(symbol):
-                            if executor.open_trade(symbol, signal_type, lot=TRADE_LOT, tp=TAKE_PROFIT, sl=STOP_LOSS):
+                            if executor.open_trade(
+                                symbol,
+                                signal_type,
+                                lot=TRADE_LOT,
+                                tp=TAKE_PROFIT,
+                                sl=STOP_LOSS
+                            ):
                                 trade_manager.reset()
                                 active_symbols.add(symbol)
                                 last_trade_times[symbol] = now
 
+                # ======================
                 # EXIT
+                # ======================
                 else:
                     for pos in positions:
                         profit = float(pos.profit)
                         trade_manager.update(profit)
                         close, reason = trade_manager.should_close(profit)
 
+                        # Extra hard TP/SL check
                         if profit >= TAKE_PROFIT or profit <= -STOP_LOSS:
                             close = True
                             reason = "TP/SL reached"
@@ -175,6 +189,7 @@ def main():
         time.sleep(max(1, 5 - elapsed))
 
     log("INFO | Bot stopped gracefully.")
+
 
 if __name__ == "__main__":
     main()

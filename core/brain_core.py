@@ -5,8 +5,10 @@ import MetaTrader5 as mt5
 import time
 import os
 import csv
+
 from config import TRADE_LOT, SIGNAL_THRESHOLD, COOLDOWN_SECONDS, TAKE_PROFIT, STOP_LOSS
-from logger import log  # <-- custom logger
+from core.logger import log  # <-- custom logger
+from core.trade_manager import TradeManager
 
 LOG_FILE = "trade_log.csv"
 
@@ -27,6 +29,16 @@ class TradingBrainCore:
         # Cooldown per symbol
         # =================================================
         self.cooldown_timestamp = 0
+
+        # =================================================
+        # Trade Manager per symbol
+        # =================================================
+        self.trade_manager = TradeManager(
+            hard_stop=-STOP_LOSS,
+            take_profit=TAKE_PROFIT,
+            exit_hysteresis=0.02,
+            buffer_size=2
+        )
 
         # =================================================
         # Logging
@@ -133,20 +145,17 @@ class TradingBrainCore:
                 self.cooldown_timestamp = now
             return
 
-        # EXIT
+        # EXIT LOGIC
         profit = float(position.profit)
 
-        # Take Profit
-        if profit >= TAKE_PROFIT:
-            if self._close_position(position, reason="TAKE_PROFIT"):
-                self.cooldown_timestamp = now
-            return
+        # Update TradeManager state
+        self.trade_manager.update(profit)
+        should_close, reason = self.trade_manager.should_close(profit)
 
-        # Stop Loss
-        if profit <= -STOP_LOSS:
-            if self._close_position(position, reason="STOP_LOSS"):
+        if should_close:
+            if self._close_position(position, reason=reason):
                 self.cooldown_timestamp = now
-            return
+                self.trade_manager.reset()
 
     # =====================================================
     # Trade Executors
