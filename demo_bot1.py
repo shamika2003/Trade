@@ -1,4 +1,7 @@
+# filename: demo_bot.py
+
 import time
+import numpy as np
 import MetaTrader5 as mt5
 import signal
 
@@ -16,21 +19,22 @@ from config import (
 )
 from core.data_fetcher import initialize_mt5, get_mtf_data
 from core.predictor import Predictor
-from core.feature_engine_live import FeatureTransformerLive
 from core.executor import BrainExecutor
+from core.feature_engine_live import FeatureTransformerLive
+from core.trade_manager import TradeManager
 from core.logger import log
 
 # ======================
-# Signal-safe shutdown
+# Prediction Memory
 # ======================
-running = True
-def stop_bot(sig, frame):
-    global running
-    running = False
-    log("INFO | Bot received shutdown signal. Exiting gracefully...")
+prediction_buffers = {}
 
-signal.signal(signal.SIGINT, stop_bot)
-signal.signal(signal.SIGTERM, stop_bot)
+def smooth_prediction(symbol, pred, window=5):
+    buf = prediction_buffers.setdefault(symbol, [])
+    buf.append(pred)
+    if len(buf) > window:
+        buf.pop(0)
+    return float(np.mean(buf))
 
 # ======================
 # Capital input
@@ -44,6 +48,18 @@ def ask_capital():
         pass
     log(f"WARNING | Invalid capital input. Using default {DEFAULT_CAPITAL} USD")
     return DEFAULT_CAPITAL
+
+# ======================
+# Signal-safe shutdown
+# ======================
+running = True
+def stop_bot(sig, frame):
+    global running
+    running = False
+    log("INFO | Bot received shutdown signal. Exiting gracefully...")
+
+signal.signal(signal.SIGINT, stop_bot)
+signal.signal(signal.SIGTERM, stop_bot)
 
 # ======================
 # Risk protection
@@ -75,13 +91,15 @@ def main():
     transformer = FeatureTransformerLive()
     executor = BrainExecutor(capital=capital)
 
+    # Trade managers per symbol
+    trade_managers = {s: TradeManager(hard_stop=-STOP_LOSS) for s in SYMBOLS}
+    active_symbols = set()
     last_trade_times = {s: 0 for s in SYMBOLS}
 
-    log("INFO | Entry-only Brain Bot Started...")
+    log("INFO | Autonomous Multi-Symbol Brain Bot Started...")
 
     while running:
         loop_start = time.time()
-
         for symbol in SYMBOLS:
             try:
                 if not mt5.symbol_select(symbol, True):  # type: ignore
@@ -108,10 +126,11 @@ def main():
                 if raw_pred_arr is None or len(raw_pred_arr) == 0:
                     continue
 
-                pred = float(raw_pred_arr[-1])
+                raw_pred = raw_pred_arr[-1]
+                pred = smooth_prediction(symbol, raw_pred)
 
                 if abs(pred) < SIGNAL_THRESHOLD:
-                    log(f"INFO | {symbol} confidence too low: {pred:.5f}")
+                    log(f"INFO | {symbol} confidence: {pred:.5f}")
                     continue
 
                 signal_type = "BUY" if pred > 0 else "SELL"
@@ -119,8 +138,14 @@ def main():
 
                 now = time.time()
                 positions = mt5.positions_get(symbol=symbol) or []  # type: ignore
+                trade_manager = trade_managers[symbol]
 
+                # ======================
+                # ENTRY
+                # ======================
                 if not positions:
+                    if symbol in active_symbols:
+                        continue
                     if now - last_trade_times[symbol] > COOLDOWN_SECONDS and BOT_MODE.startswith("AUTO"):
                         if can_open_trade(symbol):
                             if executor.open_trade(
@@ -130,6 +155,29 @@ def main():
                                 tp=TAKE_PROFIT,
                                 sl=STOP_LOSS
                             ):
+                                trade_manager.reset()
+                                active_symbols.add(symbol)
+                                last_trade_times[symbol] = now  # type: ignore
+
+                # ======================
+                # EXIT
+                # ======================
+                else:
+                    for pos in positions:
+                        profit = float(pos.profit)
+                        trade_manager.update(profit)
+                        close, reason = trade_manager.should_close(profit)
+
+                        # # Extra hard TP/SL check
+                        # if profit >= TAKE_PROFIT or profit <= -STOP_LOSS:
+                        #     close = True
+                        #     reason = "TP/SL reached"
+
+                        if close:
+                            log(f"INFO | {symbol} Closing trade: {reason}")
+                            if executor.close_position(pos):
+                                trade_manager.reset()
+                                active_symbols.discard(symbol)
                                 last_trade_times[symbol] = now  # type: ignore
 
             except Exception as e:
@@ -141,7 +189,6 @@ def main():
 
     log("INFO | Bot stopped gracefully.")
 
+
 if __name__ == "__main__":
     main()
-    
-

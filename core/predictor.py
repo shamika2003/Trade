@@ -4,7 +4,7 @@ import joblib
 import numpy as np
 import pandas as pd
 from config import MODEL_PATH, SIGNAL_THRESHOLD
-from core.logger import log  # <-- custom logger
+from core.logger import log 
 
 class Predictor:
     """
