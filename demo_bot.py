@@ -66,15 +66,15 @@ signal.signal(signal.SIGTERM, stop_bot)
 # Risk protection
 # ======================
 def can_open_trade(symbol):
-    if not mt5.terminal_info():
+    if not mt5.terminal_info():  # type: ignore
         log("WARNING | MT5 terminal disconnected")
         return False
 
-    positions_symbol = mt5.positions_get(symbol=symbol) or []
+    positions_symbol = mt5.positions_get(symbol=symbol) or []  # type: ignore
     if len(positions_symbol) >= MAX_OPEN_TRADES:
         return False
 
-    positions_all = mt5.positions_get() or []
+    positions_all = mt5.positions_get() or []  # type: ignore
     if len(positions_all) >= MAX_TOTAL_TRADES:
         log("WARNING | Trade blocked: portfolio trade limit reached")
         return False
@@ -103,11 +103,11 @@ def main():
         loop_start = time.time()
         for symbol in SYMBOLS:
             try:
-                if not mt5.symbol_select(symbol, True):
+                if not mt5.symbol_select(symbol, True):  # type: ignore
                     log(f"WARNING | {symbol} not enabled in MT5")
                     continue
 
-                if not mt5.terminal_info():
+                if not mt5.terminal_info():  # type: ignore
                     log("WARNING | MT5 disconnected. Waiting to reconnect...")
                     time.sleep(5)
                     continue
@@ -138,7 +138,7 @@ def main():
                 log(f"INFO | {symbol} Prediction: {pred:.5f} | Signal: {signal_type}")
 
                 now = time.time()
-                positions = mt5.positions_get(symbol=symbol) or []
+                positions = mt5.positions_get(symbol=symbol) or []  # type: ignore
                 trade_manager = trade_managers[symbol]
 
                 # ======================
@@ -158,7 +158,7 @@ def main():
                             ):
                                 trade_manager.reset()
                                 active_symbols.add(symbol)
-                                last_trade_times[symbol] = now
+                                last_trade_times[symbol] = now  # type: ignore
 
                 # ======================
                 # EXIT
@@ -179,7 +179,7 @@ def main():
                             if executor.close_position(pos):
                                 trade_manager.reset()
                                 active_symbols.discard(symbol)
-                                last_trade_times[symbol] = now
+                                last_trade_times[symbol] = now  # type: ignore
 
             except Exception as e:
                 log(f"ERROR | Error in symbol {symbol} loop: {e}")
