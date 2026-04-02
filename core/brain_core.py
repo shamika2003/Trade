@@ -64,7 +64,7 @@ class TradingBrainCore:
     # Position Tracker
     # =====================================================
     def get_open_position(self):
-        positions = mt5.positions_get(symbol=self.symbol)
+        positions = mt5.positions_get(symbol=self.symbol)  # type: ignore
         if positions is None or len(positions) == 0:
             return None
         return positions[0]
@@ -78,7 +78,7 @@ class TradingBrainCore:
 
         for attempt in range(3):
             try:
-                result = mt5.order_send(request)
+                result = mt5.order_send(request)  # type: ignore
                 if result is not None and result.retcode == mt5.TRADE_RETCODE_DONE:
                     return True
                 elif result is not None:
@@ -130,7 +130,7 @@ class TradingBrainCore:
         # ENTRY / EXIT
         # =================================================
         position = self.get_open_position()
-        tick = mt5.symbol_info_tick(self.symbol)
+        tick = mt5.symbol_info_tick(self.symbol)  # type: ignore
         if tick is None:
             return
 
@@ -153,7 +153,7 @@ class TradingBrainCore:
         should_close, reason = self.trade_manager.should_close(profit)
 
         if should_close:
-            if self._close_position(position, reason=reason):
+            if self._close_position(position, reason=reason):  # type: ignore
                 self.cooldown_timestamp = now
                 self.trade_manager.reset()
 
@@ -185,7 +185,7 @@ class TradingBrainCore:
         return success
 
     def _close_position(self, position, reason="CLOSE"):
-        tick = mt5.symbol_info_tick(self.symbol)
+        tick = mt5.symbol_info_tick(self.symbol)  # type: ignore
         if tick is None:
             return False
 

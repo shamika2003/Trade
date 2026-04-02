@@ -12,15 +12,15 @@ LOG_FILE = "executor_log.csv"
 # Risk Protection Layer
 # =====================================================
 def can_open_trade(symbol):
-    if not mt5.terminal_info():
+    if not mt5.terminal_info():  # type: ignore
         print("MT5 terminal disconnected")
         return False
 
-    positions_symbol = mt5.positions_get(symbol=symbol)
+    positions_symbol = mt5.positions_get(symbol=symbol)  # type: ignore
     if positions_symbol is not None and len(positions_symbol) >= MAX_OPEN_TRADES:
         return False
 
-    positions_all = mt5.positions_get()
+    positions_all = mt5.positions_get()  # type: ignore
     if positions_all is not None and len(positions_all) >= MAX_TOTAL_TRADES:
         print("Trade blocked: Portfolio trade limit reached")
         return False
@@ -53,11 +53,11 @@ class BrainExecutor:
 
         for attempt in range(3):
             try:
-                if not mt5.terminal_info():
+                if not mt5.terminal_info():  # type: ignore
                     print("MT5 connection lost")
                     return False
 
-                result = mt5.order_send(request)
+                result = mt5.order_send(request)  # type: ignore
                 if result is not None and result.retcode == mt5.TRADE_RETCODE_DONE:
                     return True
                 elif result is not None:
@@ -76,7 +76,7 @@ class BrainExecutor:
             print(f"{symbol}: Trade blocked (risk limit)")
             return False
 
-        tick = mt5.symbol_info_tick(symbol)
+        tick = mt5.symbol_info_tick(symbol)  # type: ignore
         if tick is None:
             return False
 
@@ -119,7 +119,7 @@ class BrainExecutor:
             return False
 
         symbol = position.symbol
-        tick = mt5.symbol_info_tick(symbol)
+        tick = mt5.symbol_info_tick(symbol)  # type: ignore
         if tick is None:
             return False
 

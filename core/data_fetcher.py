@@ -13,10 +13,10 @@ from config import SYMBOLS
 
 def initialize_mt5():
 
-    if not mt5.initialize():
+    if not mt5.initialize():  # type: ignore
         raise RuntimeError("MT5 initialization failed")
 
-    terminal = mt5.terminal_info()
+    terminal = mt5.terminal_info()  # type: ignore
 
     if terminal is None:
         raise RuntimeError("MT5 terminal not reachable")
@@ -26,13 +26,13 @@ def initialize_mt5():
     # Enable configured symbols
     for symbol in SYMBOLS:
 
-        symbol_info = mt5.symbol_info(symbol)
+        symbol_info = mt5.symbol_info(symbol)  # type: ignore
 
         if symbol_info is None:
             raise RuntimeError(f"Symbol not found: {symbol}")
 
         if not symbol_info.visible:
-            mt5.symbol_select(symbol, True)
+            mt5.symbol_select(symbol, True)  # type: ignore
 
         print(f"Symbol enabled: {symbol}")
 
@@ -49,7 +49,7 @@ def _fetch_rates(symbol, timeframe, n_bars, retry=3):
 
         try:
 
-            rates = mt5.copy_rates_from_pos(
+            rates = mt5.copy_rates_from_pos(  # type: ignore
                 symbol,
                 timeframe,
                 0,

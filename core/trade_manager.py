@@ -1,12 +1,10 @@
 # filename: trade_manager.py
 
-from core.logger import log  # <-- custom logger
+from core.logger import log
 
 
 class TradeManager:
     """
-    Advanced Trade Manager for a single trade.
-
     Features:
     - Hard stop enforcement
     - Dynamic profit floor / trailing take profit

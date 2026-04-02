@@ -39,7 +39,7 @@ MAX_OPEN_TRADES = 2
 MAX_TOTAL_TRADES = 5
 
 # Stop loss / take profit (in account currency, e.g., USD)
-STOP_LOSS = 1       # Example: max loss per trade $50
+STOP_LOSS = -1       # Example: max loss per trade $50
 TAKE_PROFIT = 1    # Example: target profit per trade $100
 
 # ================================

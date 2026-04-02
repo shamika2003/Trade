@@ -169,10 +169,10 @@ def main():
                         trade_manager.update(profit)
                         close, reason = trade_manager.should_close(profit)
 
-                        # Extra hard TP/SL check
-                        if profit >= TAKE_PROFIT or profit <= -STOP_LOSS:
-                            close = True
-                            reason = "TP/SL reached"
+                        # # Extra hard TP/SL check
+                        # if profit >= TAKE_PROFIT or profit <= -STOP_LOSS:
+                        #     close = True
+                        #     reason = "TP/SL reached"
 
                         if close:
                             log(f"INFO | {symbol} Closing trade: {reason}")
