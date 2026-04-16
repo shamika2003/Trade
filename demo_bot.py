@@ -1,6 +1,9 @@
+# filename: demo_bot.py
+
 import time
 import MetaTrader5 as mt5
 import signal
+import numpy as np
 
 from config import (
     COOLDOWN_SECONDS,
@@ -16,21 +19,10 @@ from config import (
 )
 from core.data_fetcher import initialize_mt5, get_mtf_data
 from core.predictor import Predictor
+
 from core.feature_engine_live import FeatureTransformerLive
 from core.executor import BrainExecutor
 from core.logger import log
-
-# ======================
-# Signal-safe shutdown
-# ======================
-running = True
-def stop_bot(sig, frame):
-    global running
-    running = False
-    log("INFO | Bot received shutdown signal. Exiting gracefully...")
-
-signal.signal(signal.SIGINT, stop_bot)
-signal.signal(signal.SIGTERM, stop_bot)
 
 # ======================
 # Capital input
@@ -44,6 +36,18 @@ def ask_capital():
         pass
     log(f"WARNING | Invalid capital input. Using default {DEFAULT_CAPITAL} USD")
     return DEFAULT_CAPITAL
+
+# ======================
+# Signal-safe shutdown
+# ======================
+running = True
+def stop_bot(sig, frame):
+    global running
+    running = False
+    log("INFO | Bot received shutdown signal. Exiting gracefully...")
+
+signal.signal(signal.SIGINT, stop_bot)
+signal.signal(signal.SIGTERM, stop_bot)
 
 # ======================
 # Risk protection
@@ -108,7 +112,7 @@ def main():
                 if raw_pred_arr is None or len(raw_pred_arr) == 0:
                     continue
 
-                pred = float(raw_pred_arr[-1])
+                pred = raw_pred_arr[-1]
 
                 if abs(pred) < SIGNAL_THRESHOLD:
                     log(f"INFO | {symbol} confidence too low: {pred:.5f}")

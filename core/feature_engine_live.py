@@ -7,7 +7,7 @@ import numpy as np
 class FeatureTransformerLive:
 
     # =====================================================
-    # Feature Schema (Keep synchronized with training)
+    # Feature Schema
     # =====================================================
 
     def get_feature_list(self):
