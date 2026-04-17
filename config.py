@@ -48,3 +48,11 @@ TAKE_PROFIT = 1.0      # target profit per trade (USD)
 # ================================
 MAX_RETRY_EXECUTION = 3
 PRICE_VALIDATION_THRESHOLD = 0.0
+
+# ================================
+# ML Confidence Control
+# ================================
+
+MIN_MODEL_AGREEMENT = 0.6     # short vs long agreement
+MIN_TRADE_STRENGTH = 0.04     # replaces weak SIGNAL_THRESHOLD usage
+CONFIDENCE_WEIGHT = 0.7       # how much agreement matters

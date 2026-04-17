@@ -1,8 +1,19 @@
+# filename: brain_core.py
+
 import numpy as np
 import MetaTrader5 as mt5
 import time
 
-from config import SIGNAL_THRESHOLD, COOLDOWN_SECONDS, STOP_LOSS, TAKE_PROFIT, TRADE_LOT
+from config import (
+    SIGNAL_THRESHOLD,
+    COOLDOWN_SECONDS,
+    STOP_LOSS,
+    TAKE_PROFIT,
+    TRADE_LOT,
+    MIN_MODEL_AGREEMENT,
+    MIN_TRADE_STRENGTH
+)
+
 from core.logger import log
 from core.trade_manager import TradeManager
 
@@ -23,10 +34,12 @@ class TradingBrainCore:
             take_profit=TAKE_PROFIT
         )
 
-    def smooth(self, pred):
-        self.pred_history.append(float(pred))
+    def smooth(self, value):
+        self.pred_history.append(float(value))
+
         if len(self.pred_history) > 5:
             self.pred_history.pop(0)
+
         return float(np.mean(self.pred_history))
 
     def get_position(self):
@@ -36,9 +49,15 @@ class TradingBrainCore:
     def decide_and_act(self, df):
         now = time.time()
 
+        # --------------------------
+        # COOLDOWN
+        # --------------------------
         if now - self.cooldown_timestamp < COOLDOWN_SECONDS:
             return
 
+        # --------------------------
+        # DATA CHECK
+        # --------------------------
         if df is None or df.empty:
             log(f"DEBUG | {self.symbol} empty dataframe")
             return
@@ -56,24 +75,49 @@ class TradingBrainCore:
             log(f"DEBUG | {self.symbol} not enough rows: {len(X)}")
             return
 
-        # 🔥 FIX: ALWAYS pass symbol explicitly
-        pred_arr = self.predictor.predict(X, feature_list, symbol=self.symbol)
+        # --------------------------
+        # PREDICTION
+        # --------------------------
+        result = self.predictor.predict(X, feature_list, symbol=self.symbol)
 
-        if pred_arr is None or len(pred_arr) == 0:
+        if result is None:
+            log(f"DEBUG | {self.symbol} no prediction")
             return
 
-        pred = self.smooth(pred_arr[-1])
-        pred = float(np.clip(pred, -2, 2))
+        raw_signal = float(result["signal"])
+        confidence = float(result["confidence"])
+        agreement = float(result["agreement"])
 
-        if abs(pred) < SIGNAL_THRESHOLD:
-            log(f"DEBUG | {self.symbol} weak signal: {pred:.4f}")
+        # --------------------------
+        # FILTERS (CONFIDENCE SYSTEM)
+        # --------------------------
+        if confidence < MIN_MODEL_AGREEMENT:
+            log(f"DEBUG | {self.symbol} low confidence: {confidence:.2f}")
             return
 
+        # smooth AFTER filtering (important fix)
+        signal = self.smooth(raw_signal)
+        signal = float(np.clip(signal, -2, 2))
+
+        if abs(signal) < MIN_TRADE_STRENGTH:
+            log(f"DEBUG | {self.symbol} weak signal: {signal:.4f}")
+            return
+
+        # optional: agreement filter (NOW USED)
+        if agreement < 0.5:
+            log(f"DEBUG | {self.symbol} low agreement: {agreement:.2f}")
+            return
+
+        # --------------------------
+        # POSITION CHECK
+        # --------------------------
         position = self.get_position()
 
+        # --------------------------
         # ENTRY
+        # --------------------------
         if position is None:
-            direction = "BUY" if pred > 0 else "SELL"
+            direction = "BUY" if signal > 0 else "SELL"
 
             success = self.executor.open_trade(
                 self.symbol,
@@ -84,12 +128,15 @@ class TradingBrainCore:
             )
 
             if success:
-                log(f"INFO | {self.symbol} OPEN {direction} | pred={pred:.4f}")
+                log(f"INFO | {self.symbol} OPEN {direction} | signal={signal:.4f}")
                 self.trade_manager.reset()
                 self.cooldown_timestamp = now
+
             return
 
+        # --------------------------
         # EXIT
+        # --------------------------
         profit = float(position.profit)
 
         self.trade_manager.update(profit)
