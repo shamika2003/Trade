@@ -35,15 +35,16 @@ TIMEFRAME = 5   # M5 timeframe
 # ================================
 TRADE_LOT = 0.01
 COOLDOWN_SECONDS = 300
+
 MAX_OPEN_TRADES = 2
 MAX_TOTAL_TRADES = 5
 
-# Stop loss / take profit (in account currency, e.g., USD)
-STOP_LOSS = -1       # Example: max loss per trade $50
-TAKE_PROFIT = 1    # Example: target profit per trade $100
+# IMPORTANT: Always POSITIVE values
+STOP_LOSS = 1.0        # max loss per trade (USD)
+TAKE_PROFIT = 1.0      # target profit per trade (USD)
 
 # ================================
 # Safety / Miscellaneous
 # ================================
 MAX_RETRY_EXECUTION = 3
-PRICE_VALIDATION_THRESHOLD = 0
+PRICE_VALIDATION_THRESHOLD = 0.0

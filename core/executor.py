@@ -4,92 +4,127 @@ import MetaTrader5 as mt5
 import time
 import os
 import csv
-from config import TRADE_LOT, MAX_OPEN_TRADES, MAX_TOTAL_TRADES, TAKE_PROFIT, STOP_LOSS
+
+from config import (
+    TRADE_LOT,
+    MAX_OPEN_TRADES,
+    MAX_TOTAL_TRADES,
+    MAX_RETRY_EXECUTION,
+    PRICE_VALIDATION_THRESHOLD
+)
+
+from core.logger import log
 
 LOG_FILE = "executor_log.csv"
+
 
 # =====================================================
 # Risk Protection Layer
 # =====================================================
 def can_open_trade(symbol):
     if not mt5.terminal_info():  # type: ignore
-        print("MT5 terminal disconnected")
+        log("ERROR | MT5 terminal disconnected")
         return False
 
-    positions_symbol = mt5.positions_get(symbol=symbol)  # type: ignore
-    if positions_symbol is not None and len(positions_symbol) >= MAX_OPEN_TRADES:
+    positions_symbol = mt5.positions_get(symbol=symbol) or []  # type: ignore
+    if len(positions_symbol) >= MAX_OPEN_TRADES:
         return False
 
-    positions_all = mt5.positions_get()  # type: ignore
-    if positions_all is not None and len(positions_all) >= MAX_TOTAL_TRADES:
-        print("Trade blocked: Portfolio trade limit reached")
+    positions_all = mt5.positions_get() or []  # type: ignore
+    if len(positions_all) >= MAX_TOTAL_TRADES:
+        log("WARNING | Portfolio limit reached")
         return False
 
     return True
 
+
 # =====================================================
-# Brain Trade Executor
+# Executor (pure execution layer)
 # =====================================================
 class BrainExecutor:
 
     def __init__(self, capital=None):
-        self.capital = capital or 0  # store capital for trade calculations or logging
-        # create log file if not exists
+        self.capital = capital or 0
+
         if not os.path.exists(LOG_FILE):
             with open(LOG_FILE, "w", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerow([
                     "timestamp", "symbol", "signal", "price",
-                    "profit", "action", "reason"
+                    "sl", "tp", "profit", "action", "reason"
                 ])
-        print(f"BrainExecutor initialized with capital: {self.capital} USD")
+
+        log(f"INFO | Executor ready | Capital={self.capital}")
 
     # -----------------------------------------
-    # Safe MT5 Order Sender
+    # Tick validation
     # -----------------------------------------
-    def _send_order(self, request):
-        if request is None:
+    def _valid_tick(self, tick):
+        if tick is None:
             return False
 
-        for attempt in range(3):
+        if tick.ask <= 0 or tick.bid <= 0:
+            return False
+
+        spread = abs(tick.ask - tick.bid)
+
+        if spread <= 0:
+            return False
+
+        if spread > PRICE_VALIDATION_THRESHOLD:
+            log(f"WARNING | High spread detected: {spread}")
+            return False
+
+        return True
+
+    # -----------------------------------------
+    # Safe order send
+    # -----------------------------------------
+    def _send_order(self, request):
+        for attempt in range(MAX_RETRY_EXECUTION):
             try:
                 if not mt5.terminal_info():  # type: ignore
-                    print("MT5 connection lost")
+                    log("ERROR | MT5 disconnected")
                     return False
 
                 result = mt5.order_send(request)  # type: ignore
-                if result is not None and result.retcode == mt5.TRADE_RETCODE_DONE:
+
+                if result and result.retcode == mt5.TRADE_RETCODE_DONE:
                     return True
-                elif result is not None:
-                    print(f"Order failed retcode={result.retcode}")
+
+                if result:
+                    log(f"WARNING | Order failed retcode={result.retcode}")
+
             except Exception as e:
-                print(f"Order exception: {e}")
+                log(f"ERROR | Order exception: {e}")
+
             time.sleep(0.4)
 
         return False
 
     # -----------------------------------------
-    # Open Trade with TP/SL safety
+    # Open trade WITH REAL SL/TP
     # -----------------------------------------
-    def open_trade(self, symbol, direction, lot=None, tp=None, sl=None):
+    def open_trade(self, symbol, direction, lot=None, sl=None, tp=None):
         if not can_open_trade(symbol):
-            print(f"{symbol}: Trade blocked (risk limit)")
             return False
 
         tick = mt5.symbol_info_tick(symbol)  # type: ignore
-        if tick is None:
+        if not self._valid_tick(tick):
             return False
 
         if direction == "BUY":
             price = tick.ask
             order_type = mt5.ORDER_TYPE_BUY
+            sl_price = price - sl if sl else 0
+            tp_price = price + tp if tp else 0
+
         elif direction == "SELL":
             price = tick.bid
             order_type = mt5.ORDER_TYPE_SELL
+            sl_price = price + sl if sl else 0
+            tp_price = price - tp if tp else 0
         else:
-            return False
-
-        if price is None or price <= 0:
             return False
 
         request = {
@@ -98,6 +133,8 @@ class BrainExecutor:
             "volume": lot or TRADE_LOT,
             "type": order_type,
             "price": price,
+            "sl": sl_price if sl else 0,
+            "tp": tp_price if tp else 0,
             "deviation": 50,
             "magic": 7777,
             "comment": "ML_BRAIN",
@@ -106,13 +143,15 @@ class BrainExecutor:
         }
 
         success = self._send_order(request)
+
         if success:
-            print(f"{symbol}: Brain opened trade {direction} @ {price}")
-            self._log_trade(symbol, direction, price, 0, "OPEN", "Signal")
+            log(f"INFO | {symbol} OPEN {direction} @ {price} SL={sl_price} TP={tp_price}")
+            self._log_trade(symbol, direction, price, sl_price, tp_price, 0, "OPEN", "Signal")
+
         return success
 
     # -----------------------------------------
-    # Close Trade
+    # Close trade
     # -----------------------------------------
     def close_position(self, position, reason="CLOSE"):
         if position is None:
@@ -120,7 +159,8 @@ class BrainExecutor:
 
         symbol = position.symbol
         tick = mt5.symbol_info_tick(symbol)  # type: ignore
-        if tick is None:
+
+        if not self._valid_tick(tick):
             return False
 
         if position.type == mt5.ORDER_TYPE_BUY:
@@ -147,15 +187,17 @@ class BrainExecutor:
         }
 
         success = self._send_order(request)
+
         if success:
-            print(f"{symbol}: Brain closed position @ {price} | Reason: {reason}")
-            self._log_trade(symbol, signal, price, position.profit, "CLOSE", reason)
+            log(f"INFO | {symbol} CLOSE @ {price} | {reason}")
+            self._log_trade(symbol, signal, price, 0, 0, position.profit, "CLOSE", reason)
+
         return success
 
     # -----------------------------------------
     # Logging
     # -----------------------------------------
-    def _log_trade(self, symbol, signal, price, profit, action, reason):
+    def _log_trade(self, symbol, signal, price, sl, tp, profit, action, reason):
         with open(LOG_FILE, "a", newline="") as f:
             writer = csv.writer(f)
             writer.writerow([
@@ -163,6 +205,8 @@ class BrainExecutor:
                 symbol,
                 signal,
                 round(price, 5) if price else 0,
+                round(sl, 5) if sl else 0,
+                round(tp, 5) if tp else 0,
                 round(profit, 2),
                 action,
                 reason
