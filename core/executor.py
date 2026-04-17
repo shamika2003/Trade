@@ -4,6 +4,7 @@ import MetaTrader5 as mt5
 import time
 import os
 import csv
+import numpy as np
 
 from config import (
     TRADE_LOT,
@@ -46,6 +47,8 @@ class BrainExecutor:
     def __init__(self, capital=None):
         self.capital = capital or 0
 
+        self.spread_history = {}
+
         if not os.path.exists(LOG_FILE):
             with open(LOG_FILE, "w", newline="") as f:
                 writer = csv.writer(f)
@@ -59,7 +62,7 @@ class BrainExecutor:
     # -----------------------------------------
     # Tick validation
     # -----------------------------------------
-    def _valid_tick(self, tick):
+    def _valid_tick(self, symbol, tick):
         if tick is None:
             return False
 
@@ -71,8 +74,34 @@ class BrainExecutor:
         if spread <= 0:
             return False
 
-        if spread > PRICE_VALIDATION_THRESHOLD:
-            log(f"WARNING | High spread detected: {spread}")
+        # -----------------------------
+        # INIT STORAGE
+        # -----------------------------
+        hist = self.spread_history.setdefault(symbol, [])
+
+        hist.append(spread)
+
+        if len(hist) > 50:
+            hist.pop(0)
+
+        # -----------------------------
+        # DYNAMIC THRESHOLD
+        # -----------------------------
+        avg_spread = max(np.mean(hist), 0.00001)
+
+        dynamic_threshold = avg_spread * 2.5
+
+        # -----------------------------
+        # HARD FLOOR (safety)
+        # -----------------------------
+        if spread < 0.00005:
+            return True
+
+        # -----------------------------
+        # FILTER
+        # -----------------------------
+        if spread > dynamic_threshold:
+            log(f"WARNING | {symbol} spread spike: {spread:.5f} > {dynamic_threshold:.5f}")
             return False
 
         return True
@@ -110,7 +139,7 @@ class BrainExecutor:
             return False
 
         tick = mt5.symbol_info_tick(symbol)  # type: ignore
-        if not self._valid_tick(tick):
+        if not self._valid_tick(symbol, tick):
             return False
 
         if direction == "BUY":
@@ -160,7 +189,7 @@ class BrainExecutor:
         symbol = position.symbol
         tick = mt5.symbol_info_tick(symbol)  # type: ignore
 
-        if not self._valid_tick(tick):
+        if not self._valid_tick(symbol, tick):
             return False
 
         if position.type == mt5.ORDER_TYPE_BUY:

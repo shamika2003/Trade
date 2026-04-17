@@ -5,7 +5,6 @@ import MetaTrader5 as mt5
 import time
 
 from config import (
-    SIGNAL_THRESHOLD,
     COOLDOWN_SECONDS,
     STOP_LOSS,
     TAKE_PROFIT,

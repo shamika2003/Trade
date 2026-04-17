@@ -14,9 +14,6 @@ MODEL_PATH = str(BASE_DIR / "model/trading_model.pkl")
 # ================================
 FUTURE_PERIOD = 12
 
-# Signal selectivity threshold
-SIGNAL_THRESHOLD = 0.03
-
 # Spread noise protection
 SPREAD_COST = 0.0002
 
@@ -47,12 +44,19 @@ TAKE_PROFIT = 1.0      # target profit per trade (USD)
 # Safety / Miscellaneous
 # ================================
 MAX_RETRY_EXECUTION = 3
-PRICE_VALIDATION_THRESHOLD = 0.0
+PRICE_VALIDATION_THRESHOLD = 0.001
+
+# ================================
+# Dynamic Spread Control
+# ================================
+SPREAD_WINDOW = 50              # number of ticks to track
+SPREAD_MULTIPLIER = 2.5         # allowed spike factor
+MIN_SPREAD_FLOOR = 0.00005      # absolute minimum (avoid zero issues)
 
 # ================================
 # ML Confidence Control
 # ================================
 
 MIN_MODEL_AGREEMENT = 0.6     # short vs long agreement
-MIN_TRADE_STRENGTH = 0.04     # replaces weak SIGNAL_THRESHOLD usage
+MIN_TRADE_STRENGTH = 0.015     # replaces weak SIGNAL_THRESHOLD usage
 CONFIDENCE_WEIGHT = 0.7       # how much agreement matters
