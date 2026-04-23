@@ -74,7 +74,7 @@ def build_dataset():
         }, inplace=True)
 
         # ======================
-        # Merge MTF
+        # Merge MTF (safe)
         # ======================
 
         df = pd.merge_asof(
@@ -96,40 +96,35 @@ def build_dataset():
         ).astype(int)
 
         # ======================
-        # Target Construction
+        # Target Construction (LEAKAGE SAFE)
         # ======================
 
         future_close = df["close"].shift(-FUTURE_PERIOD)
 
         raw_return = (future_close - df["close"]) / df["close"]
 
-        vol = df["return"].rolling(20).std()
-
-        risk_adjusted_return = raw_return / (vol + 1e-9)
-
-        df["future_return"] = np.tanh(risk_adjusted_return)
+        # Bounded, stable target
+        df["future_return"] = np.tanh(raw_return)
 
         # ======================
-        # Regime Features
+        # Multi Targets (aligned + safe)
         # ======================
 
-        df["volatility"] = df["return"].rolling(20).std()
+        df["future_close_short"] = df["close"].shift(-6)
+        df["future_close_long"] = df["close"].shift(-24)
 
-        vol = df["return"].rolling(20).std()
+        df["target_short"] = np.tanh(
+            (df["future_close_short"] - df["close"]) / df["close"]
+        )
 
-        threshold = vol.rolling(500).quantile(0.75)
+        df["target_long"] = np.tanh(
+            (df["future_close_long"] - df["close"]) / df["close"]
+        )
 
-        df["volatility_regime"] = (vol > threshold).astype(int)
-
-        df["price_zscore"] = (
-            df["close"] - df["close"].rolling(1000).mean()
-        ) / (df["close"].rolling(1000).std() + 1e-9)
-
-        # ======================
-        # Momentum Context
-        # ======================
-
-        df["momentum_context"] = df["close"].pct_change(10)
+        df.drop(
+            columns=["future_close_short", "future_close_long"],
+            inplace=True
+        )
 
         # ======================
         # Spread Safety
@@ -139,38 +134,13 @@ def build_dataset():
             df["spread"] = 0
 
         # ======================
-        # Noise Filter
+        # Final Cleanup
         # ======================
 
-        noise_threshold = 0.00005
-        df = df[abs(df["future_return"]) > noise_threshold]
-
-        # ======================
-        # Multi Targets
-        # ======================
-
-        df["future_close_short"] = df["close"].shift(-6)
-        df["future_close_long"] = df["close"].shift(-24)
-
-        df["target_short"] = np.tanh(
-            ((df["future_close_short"] - df["close"]) / df["close"]) * 100
-        )
-
-        df["target_long"] = np.tanh(
-            ((df["future_close_long"] - df["close"]) / df["close"]) * 100
-        )
-
-        df.drop(
-            columns=["future_close_short", "future_close_long"],
-            inplace=True
-        )
-
-        # ======================
-        # Leakage Safety
-        # ======================
-
+        # Remove rows where future data not available
         df = df.iloc[:-FUTURE_PERIOD].copy()
 
+        df.replace([np.inf, -np.inf], np.nan, inplace=True)
         df.dropna(inplace=True)
 
         df["symbol"] = symbol

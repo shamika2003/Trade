@@ -274,3 +274,47 @@
 2026-04-17 15:10:17.181210 | INFO | DEBUG | GBPUSD weak signal: 0.0036
 2026-04-17 15:10:17.316351 | INFO | DEBUG | TradeManager Update | Max Profit: -0.10 | Profit Floor: None
 2026-04-17 15:10:17.491222 | INFO | DEBUG | USDCNH weak signal: -0.0002
+2026-04-17 15:10:22.297038 | INFO | DEBUG | EURUSD weak signal: 0.0138
+2026-04-17 15:10:22.462611 | INFO | DEBUG | GBPUSD weak signal: 0.0039
+2026-04-17 15:10:22.617225 | INFO | DEBUG | TradeManager Update | Max Profit: -0.10 | Profit Floor: None
+2026-04-17 15:10:22.762878 | INFO | DEBUG | USDCNH weak signal: -0.0003
+2026-04-17 15:10:26.987086 | INFO | DEBUG | EURUSD weak signal: 0.0137
+2026-04-17 15:10:27.126645 | INFO | DEBUG | GBPUSD weak signal: 0.0041
+2026-04-17 15:10:27.264165 | INFO | DEBUG | TradeManager Update | Max Profit: -0.10 | Profit Floor: None
+2026-04-17 15:10:27.405663 | INFO | DEBUG | USDCNH weak signal: -0.0003
+2026-04-17 15:10:32.138826 | INFO | DEBUG | EURUSD weak signal: 0.0137
+2026-04-17 15:10:32.616188 | INFO | DEBUG | GBPUSD weak signal: 0.0041
+2026-04-17 15:10:32.892515 | INFO | DEBUG | TradeManager Update | Max Profit: -0.10 | Profit Floor: None
+2026-04-17 15:10:33.375069 | INFO | DEBUG | USDCNH weak signal: -0.0003
+2026-04-17 15:10:37.006141 | INFO | DEBUG | EURUSD weak signal: 0.0137
+2026-04-17 15:10:37.151692 | INFO | DEBUG | GBPUSD weak signal: 0.0040
+2026-04-17 15:10:37.401323 | INFO | DEBUG | TradeManager Update | Max Profit: -0.10 | Profit Floor: None
+2026-04-17 15:10:37.696475 | INFO | DEBUG | USDCNH weak signal: -0.0003
+2026-04-17 15:10:41.992656 | INFO | DEBUG | EURUSD weak signal: 0.0136
+2026-04-17 15:10:42.163141 | INFO | DEBUG | GBPUSD weak signal: 0.0039
+2026-04-17 15:10:42.424565 | INFO | DEBUG | TradeManager Update | Max Profit: -0.10 | Profit Floor: None
+2026-04-17 15:10:42.643125 | INFO | DEBUG | USDCNH weak signal: -0.0003
+2026-04-17 15:10:46.999158 | INFO | DEBUG | EURUSD weak signal: 0.0136
+2026-04-17 15:10:47.146144 | INFO | DEBUG | GBPUSD weak signal: 0.0040
+2026-04-17 15:10:47.282982 | INFO | DEBUG | TradeManager Update | Max Profit: -0.10 | Profit Floor: None
+2026-04-17 15:10:47.416595 | INFO | DEBUG | USDCNH weak signal: -0.0003
+2026-04-17 15:10:51.992151 | INFO | DEBUG | EURUSD weak signal: 0.0136
+2026-04-17 15:10:52.134511 | INFO | DEBUG | GBPUSD weak signal: 0.0042
+2026-04-17 15:10:52.266139 | INFO | DEBUG | TradeManager Update | Max Profit: -0.10 | Profit Floor: None
+2026-04-17 15:10:52.400844 | INFO | DEBUG | USDCNH weak signal: -0.0004
+2026-04-17 15:10:56.998899 | INFO | DEBUG | EURUSD weak signal: 0.0136
+2026-04-17 15:10:57.144949 | INFO | DEBUG | GBPUSD weak signal: 0.0045
+2026-04-17 15:10:57.278287 | INFO | DEBUG | TradeManager Update | Max Profit: -0.10 | Profit Floor: None
+2026-04-17 15:10:57.478955 | INFO | DEBUG | USDCNH weak signal: -0.0004
+2026-04-17 15:11:02.012976 | INFO | DEBUG | EURUSD weak signal: 0.0136
+2026-04-17 15:11:02.169765 | INFO | DEBUG | GBPUSD weak signal: 0.0048
+2026-04-17 15:11:02.317266 | INFO | DEBUG | TradeManager Update | Max Profit: -0.10 | Profit Floor: None
+2026-04-17 15:11:02.473685 | INFO | DEBUG | USDCNH weak signal: -0.0005
+2026-04-17 15:11:07.013750 | INFO | DEBUG | EURUSD weak signal: 0.0136
+2026-04-17 15:11:07.167754 | INFO | DEBUG | GBPUSD weak signal: 0.0047
+2026-04-17 15:11:07.332102 | INFO | DEBUG | TradeManager Update | Max Profit: -0.10 | Profit Floor: None
+2026-04-17 15:11:07.514267 | INFO | DEBUG | USDCNH weak signal: -0.0005
+2026-04-17 15:11:12.005346 | INFO | DEBUG | EURUSD weak signal: 0.0136
+2026-04-17 15:11:12.151974 | INFO | DEBUG | GBPUSD weak signal: 0.0046
+2026-04-17 15:11:12.291759 | INFO | DEBUG | TradeManager Update | Max Profit: -0.10 | Profit Floor: None
+2026-04-17 15:11:12.458386 | INFO | DEBUG | USDCNH weak signal: -0.0005
