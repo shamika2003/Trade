@@ -1,7 +1,5 @@
 # filename: holdout_test.py
 
-# filename: holdout_test.py
-
 import pandas as pd
 import numpy as np
 
