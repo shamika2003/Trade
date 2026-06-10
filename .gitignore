@@ -5,7 +5,7 @@ executor_log.csv
 
 # log
 bot_log.txt
-*.txt
+
 
 
 # Python cache
