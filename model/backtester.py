@@ -12,15 +12,7 @@ def run_backtest(df, predictions):
     if len(df) != len(predictions):
         raise RuntimeError("Backtester: prediction length mismatch")
 
-    # =====================================
-    # Clean predictions
-    # =====================================
-
     predictions = np.nan_to_num(predictions)
-
-    # =====================================
-    # Signal normalization (z-score)
-    # =====================================
 
     pred_mean = predictions.mean()
     pred_std = predictions.std() + 1e-9
@@ -30,34 +22,21 @@ def run_backtest(df, predictions):
     pnl = []
     trades = []
 
-    # Leave room for entry + exit candles
     N = len(z_signal) - FUTURE_PERIOD - 1
 
-    for i in range(N):
+    for i in range(max(N, 0)):
 
         signal = z_signal[i]
 
         if abs(signal) < SIGNAL_THRESHOLD:
             continue
 
-        # =====================================
-        # Trade execution
-        # =====================================
-
-        # Enter next candle (no lookahead)
         entry_price = df["open"].iloc[i + 1]
-
-        # Exit after FUTURE_PERIOD
         exit_price = df["close"].iloc[i + 1 + FUTURE_PERIOD]
 
         raw_return = (exit_price - entry_price) / entry_price
 
-        # Spread cost
         spread_cost = SPREAD_COST
-
-        # =====================================
-        # Position sizing (confidence scaling)
-        # =====================================
 
         position_size = np.clip(abs(signal) / 3.0, 0, 1)
 
@@ -72,41 +51,27 @@ def run_backtest(df, predictions):
     pnl = np.array(pnl)
     trades = np.array(trades)
 
-    # =====================================
-    # Performance Metrics
-    # =====================================
-
     if len(pnl) == 0:
         print("No trades executed.")
         return {}
 
     total_return = pnl.sum()
-
     win_rate = (trades > 0).mean()
 
-    # Sharpe ratio (trade-based)
     sharpe = 0
     if trades.std() > 0:
         sharpe = trades.mean() / (trades.std() + 1e-9)
 
-    # M5 bars assumption
     sharpe_annual = sharpe * np.sqrt(288 * 252)
 
     cumulative = np.cumsum(pnl)
-
     running_max = np.maximum.accumulate(cumulative)
-
     drawdown = cumulative - running_max
 
     max_drawdown = drawdown.min()
 
     trade_count = len(trades)
-
     trade_frequency = trade_count / max(N, 1)
-
-    # =====================================
-    # Output
-    # =====================================
 
     print("========== BACKTEST RESULTS ==========")
     print(f"Total Return      : {total_return:.6f}")
