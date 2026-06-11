@@ -361,3 +361,394 @@ if __name__ == "__main__":
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+# filename: trainer.py
+
+import pandas as pd
+import numpy as np
+import joblib
+
+from sklearn.model_selection import TimeSeriesSplit
+from sklearn.metrics import mean_squared_error
+from xgboost import XGBRegressor
+
+from config import DATA_PATH, MODEL_PATH, FUTURE_PERIOD, SYMBOLS
+from feature_engine import FeatureTransformer
+
+
+# ===============================
+# LOAD DATA
+# ===============================
+def load_data():
+    df = pd.read_csv(DATA_PATH)
+
+    if "time" in df.columns:
+        df = df.sort_values("time")
+
+    feature_engine = FeatureTransformer()
+    feature_list = feature_engine.get_feature_list()
+
+    missing = [f for f in feature_list if f not in df.columns]
+    if missing:
+        raise RuntimeError(f"Missing features: {missing}")
+
+    df.replace([np.inf, -np.inf], np.nan, inplace=True)
+    df.dropna(inplace=True)
+
+    return df
+
+
+# ===============================
+# CLEAN TARGET (IMPORTANT FIX)
+# ===============================
+def make_target(y):
+    """
+    Keep target in stable bounded regression space only once.
+    """
+    return y.replace([np.inf, -np.inf], np.nan).fillna(0)
+
+
+# ===============================
+# WEIGHTS (FIXED STABILITY)
+# ===============================
+def compute_weights(y, X):
+    vol = X["volatility"].replace(0, np.nan)
+    vol = vol.fillna(vol.median())
+
+    weight = np.abs(y) / (vol + 1e-6)
+
+    # stabilize extreme weights
+    return np.clip(weight, 0.3, 3.0)
+
+
+# ===============================
+# DIRECTIONAL ACCURACY
+# ===============================
+def directional_accuracy(y_true, y_pred):
+    threshold = 1e-5
+
+    true_dir = np.where(np.abs(y_true) < threshold, 0, np.sign(y_true))
+    pred_dir = np.where(np.abs(y_pred) < threshold, 0, np.sign(y_pred))
+
+    mask = true_dir != 0
+
+    if mask.sum() == 0:
+        return 0.0
+
+    return np.mean(true_dir[mask] == pred_dir[mask])
+
+
+# ===============================
+# TRAIN
+# ===============================
+def train():
+
+    print("\n" + "═" * 80)
+    print("🧠 QUANT TRAINING ENGINE INITIALIZED")
+    print("═" * 80)
+
+    df = load_data()
+
+    print(f"✔ Dataset loaded | Rows: {len(df):,}")
+    print("─" * 80)
+
+    feature_engine = FeatureTransformer()
+    features = feature_engine.get_feature_list()
+
+    MODEL_PARAMS = dict(
+        n_estimators=700,
+        learning_rate=0.008,
+        max_depth=5,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        min_child_weight=3,
+        reg_alpha=0.1,
+        reg_lambda=1.0,
+        objective="reg:squarederror",
+        tree_method="hist",
+        random_state=42
+    )
+
+    models = {}
+    report = {}
+
+    for symbol in SYMBOLS:
+
+        print("\n" + "═" * 80)
+        print(f"📈 SYMBOL PIPELINE: {symbol}")
+        print("═" * 80)
+
+        data = df[df["symbol"] == symbol].copy()
+
+        if len(data) < 1200:
+            print(f"⚠️ SKIPPED {symbol} | insufficient data")
+            continue
+
+        # CRITICAL: enforce time ordering
+        data = data.sort_values("time").reset_index(drop=True)
+
+        X = data[features]
+
+        # FIX: use raw target_short directly (NO double transform)
+        y = make_target(data["target_short"])
+
+        tscv = TimeSeriesSplit(n_splits=5, gap=FUTURE_PERIOD)
+
+        acc_list = []
+        rmse_list = []
+
+        for i, (train_idx, val_idx) in enumerate(tscv.split(X)):
+
+            print("\n" + "·" * 60)
+            print(f"🔁 FOLD {i+1}/5")
+            print("·" * 60)
+
+            X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
+            y_train, y_val = y.iloc[train_idx], y.iloc[val_idx]
+
+            model = XGBRegressor(**MODEL_PARAMS)
+
+            model.fit(
+                X_train,
+                y_train,
+                sample_weight=compute_weights(y_train, X_train),
+                verbose=False
+            )
+
+            pred = model.predict(X_val)
+
+            # NO CLIPPING (important fix)
+            rmse = np.sqrt(mean_squared_error(y_val, pred))
+            acc = directional_accuracy(y_val.values, pred)
+
+            rmse_list.append(rmse)
+            acc_list.append(acc)
+
+            print(f"📉 RMSE      : {rmse:.6f}")
+            print(f"🎯 ACC       : {acc:.4f}")
+
+        print("\n" + "─" * 80)
+        print(f"📊 SYMBOL RESULT: {symbol}")
+        print(f"RMSE AVG : {np.mean(rmse_list):.6f}")
+        print(f"ACC  AVG : {np.mean(acc_list):.4f}")
+        print("─" * 80)
+
+        final_model = XGBRegressor(**MODEL_PARAMS)
+
+        final_model.fit(
+            X,
+            y,
+            sample_weight=compute_weights(y, X),
+            verbose=False
+        )
+
+        models[symbol] = final_model
+
+        report[symbol] = {
+            "rmse": float(np.mean(rmse_list)),
+            "acc": float(np.mean(acc_list))
+        }
+
+    print("\n" + "═" * 80)
+    print("📊 FINAL SYSTEM REPORT")
+    print("═" * 80)
+
+    for k, v in report.items():
+        print(f"{k:<10} | RMSE: {v['rmse']:.6f} | ACC: {v['acc']:.4f}")
+
+    joblib.dump(models, MODEL_PATH)
+
+    print("\n✔ MODEL SAVED:", MODEL_PATH)
+    print("═" * 80 + "\n")
+
+
+if __name__ == "__main__":
+    train()
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+PS C:\Users\hidogama\Documents\Multi-laug-projects\trade> & C:\Users\hidogama\AppData\Local\Programs\Python\Python313\python.exe c:/Users/hidogama/Documents/Multi-laug-projects/trade/model/trainer.py
+
+════════════════════════════════════════════════════════════════════════════════
+🧠 QUANT TRAINING ENGINE INITIALIZED
+════════════════════════════════════════════════════════════════════════════════
+✔ Dataset loaded | Rows: 1,871,484
+────────────────────────────────────────────────────────────────────────────────
+
+════════════════════════════════════════════════════════════════════════════════
+📈 SYMBOL PIPELINE: EURUSD
+════════════════════════════════════════════════════════════════════════════════
+
+····························································
+🔁 FOLD 1/5
+····························································
+📉 RMSE      : 0.000505
+🎯 ACC       : 0.6408
+
+····························································
+🔁 FOLD 2/5
+····························································
+📉 RMSE      : 0.000838
+🎯 ACC       : 0.6423
+
+····························································
+🔁 FOLD 3/5
+····························································
+📉 RMSE      : 0.000518
+🎯 ACC       : 0.6421
+
+····························································
+🔁 FOLD 4/5
+····························································
+📉 RMSE      : 0.000645
+🎯 ACC       : 0.6433
+
+····························································
+🔁 FOLD 5/5
+····························································
+📉 RMSE      : 0.000531
+🎯 ACC       : 0.6503
+
+────────────────────────────────────────────────────────────────────────────────
+📊 SYMBOL RESULT: EURUSD
+RMSE AVG : 0.000608
+ACC  AVG : 0.6438
+────────────────────────────────────────────────────────────────────────────────
+
+════════════════════════════════════════════════════════════════════════════════
+📈 SYMBOL PIPELINE: GBPUSD
+════════════════════════════════════════════════════════════════════════════════
+
+····························································
+🔁 FOLD 1/5
+····························································
+📉 RMSE      : 0.000551
+🎯 ACC       : 0.6398
+
+····························································
+🔁 FOLD 2/5
+····························································
+📉 RMSE      : 0.001086
+🎯 ACC       : 0.6427
+
+····························································
+🔁 FOLD 3/5
+····························································
+📉 RMSE      : 0.000586
+🎯 ACC       : 0.6414
+
+····························································
+🔁 FOLD 4/5
+····························································
+📉 RMSE      : 0.000596
+🎯 ACC       : 0.6450
+
+····························································
+🔁 FOLD 5/5
+····························································
+📉 RMSE      : 0.000556
+🎯 ACC       : 0.6536
+
+────────────────────────────────────────────────────────────────────────────────
+📊 SYMBOL RESULT: GBPUSD
+RMSE AVG : 0.000675
+ACC  AVG : 0.6445
+────────────────────────────────────────────────────────────────────────────────
+
+════════════════════════════════════════════════════════════════════════════════
+📈 SYMBOL PIPELINE: USDJPY
+════════════════════════════════════════════════════════════════════════════════
+
+····························································
+🔁 FOLD 1/5
+····························································
+📉 RMSE      : 0.000491
+🎯 ACC       : 0.6352
+
+····························································
+🔁 FOLD 2/5
+····························································
+📉 RMSE      : 0.001038
+🎯 ACC       : 0.6414
+
+····························································
+🔁 FOLD 3/5
+····························································
+📉 RMSE      : 0.000761
+🎯 ACC       : 0.6368
+
+····························································
+🔁 FOLD 4/5
+····························································
+📉 RMSE      : 0.000920
+🎯 ACC       : 0.6500
+
+····························································
+🔁 FOLD 5/5
+····························································
+📉 RMSE      : 0.000651
+🎯 ACC       : 0.6500
+
+────────────────────────────────────────────────────────────────────────────────
+📊 SYMBOL RESULT: USDJPY
+RMSE AVG : 0.000772
+ACC  AVG : 0.6427
+────────────────────────────────────────────────────────────────────────────────
+
+════════════════════════════════════════════════════════════════════════════════
+📈 SYMBOL PIPELINE: USDCNH
+════════════════════════════════════════════════════════════════════════════════
+
+····························································
+🔁 FOLD 1/5
+····························································
+📉 RMSE      : 0.000271
+🎯 ACC       : 0.6424
+
+····························································
+🔁 FOLD 2/5
+····························································
+📉 RMSE      : 0.000617
+🎯 ACC       : 0.6335
+
+····························································
+🔁 FOLD 3/5
+····························································
+📉 RMSE      : 0.000383
+🎯 ACC       : 0.6442
+
+····························································
+🔁 FOLD 4/5
+····························································
+📉 RMSE      : 0.000366
+🎯 ACC       : 0.6364
+
+····························································
+🔁 FOLD 5/5
+····························································
+📉 RMSE      : 0.000231
+🎯 ACC       : 0.6240
+
+────────────────────────────────────────────────────────────────────────────────
+📊 SYMBOL RESULT: USDCNH
+RMSE AVG : 0.000374
+ACC  AVG : 0.6361
+────────────────────────────────────────────────────────────────────────────────
+
+📊 FINAL SYSTEM REPORT
+EURUSD     | RMSE: 0.000608 | ACC: 0.6438
+GBPUSD     | RMSE: 0.000675 | ACC: 0.6445
+USDJPY     | RMSE: 0.000772 | ACC: 0.6427
+USDCNH     | RMSE: 0.000374 | ACC: 0.6361
+
+✔ MODEL SAVED: model/trading_model.pkl
+════════════════════════════════════════════════════════════════════════════════
+
+PS C:\Users\hidogama\Documents\Multi-laug-projects\trade> & 
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////

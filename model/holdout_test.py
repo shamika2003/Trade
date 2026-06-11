@@ -16,7 +16,14 @@ from feature_engine import FeatureTransformer
 
 def load_data():
 
+    print("\n" + "═" * 80)
+    print("🧪  HOLDOUT VALIDATION ENGINE")
+    print("═" * 80)
+    print("📂 Loading dataset...")
+
     df = pd.read_csv(DATA_PATH)
+
+    print(f"✔ Dataset loaded | Rows: {len(df):,}")
 
     feature_engine = FeatureTransformer()
     features = feature_engine.get_feature_list()
@@ -26,8 +33,13 @@ def load_data():
     if missing:
         raise RuntimeError(f"Missing features: {missing}")
 
+    print(f"🧠 Feature set loaded | Features: {len(features)}")
+
     df.replace([np.inf, -np.inf], np.nan, inplace=True)
     df.dropna(inplace=True)
+
+    print(f"🧹 Cleaned dataset | Rows: {len(df):,}")
+    print("═" * 80)
 
     return df
 
@@ -42,7 +54,6 @@ def make_signal_target(y, X):
     vol = vol.fillna(vol.median())
 
     signal = y / (vol + 1e-6)
-
     signal = np.tanh(signal * 5)
 
     return signal
@@ -96,7 +107,9 @@ def compute_weights(y, X):
 
 def run_holdout():
 
-    print("Loading dataset...")
+    print("\n" + "═" * 80)
+    print("🚀 STARTING HOLDOUT EVALUATION PIPELINE")
+    print("═" * 80)
 
     df = load_data()
 
@@ -119,14 +132,14 @@ def run_holdout():
 
     for symbol in SYMBOLS:
 
-        print("\n===================================")
-        print("SYMBOL:", symbol)
-        print("===================================")
+        print("\n" + "═" * 80)
+        print(f"📈 SYMBOL HOLDOUT: {symbol}")
+        print("═" * 80)
 
         symbol_df = df[df["symbol"] == symbol].copy()
 
         if len(symbol_df) < 2000:
-            print("Skip: insufficient rows")
+            print(f"⚠️ Skip {symbol} | insufficient rows ({len(symbol_df):,})")
             continue
 
         if "time" in symbol_df.columns:
@@ -139,25 +152,18 @@ def run_holdout():
         train_df = symbol_df.iloc[:split_index]
         test_df = symbol_df.iloc[split_index:]
 
-        print("Train rows:", len(train_df))
-        print("Test rows :", len(test_df))
+        print(f"📊 Train rows : {len(train_df):,}")
+        print(f"📊 Test rows  : {len(test_df):,}")
 
         X_train = train_df[features]
         X_test = test_df[features]
 
-        y_train = make_signal_target(
-            train_df["target_short"],
-            X_train
-        )
-
-        y_test = make_signal_target(
-            test_df["target_short"],
-            X_test
-        )
+        y_train = make_signal_target(train_df["target_short"], X_train)
+        y_test = make_signal_target(test_df["target_short"], X_test)
 
         model = XGBRegressor(**MODEL_PARAMS)
 
-        print("Training...")
+        print("🧠 Training model...")
 
         model.fit(
             X_train,
@@ -166,10 +172,9 @@ def run_holdout():
             verbose=False
         )
 
-        print("Predicting...")
+        print("📊 Generating predictions...")
 
         predictions = model.predict(X_test)
-
         predictions = np.clip(predictions, -1, 1)
 
         rmse = np.sqrt(
@@ -189,10 +194,15 @@ def run_holdout():
             y_test
         )[0, 1]
 
-        print("\nRESULTS")
-        print("RMSE :", round(rmse, 6))
-        print("ACC  :", round(acc, 4))
-        print("CORR :", round(corr, 4))
+        print("\n" + "─" * 80)
+        print(f"📊 RESULTS | {symbol}")
+        print("─" * 80)
+
+        print(f"📉 RMSE : {rmse:.6f}")
+        print(f"🎯 ACC  : {acc:.4f}")
+        print(f"📈 CORR : {corr:.4f}")
+
+        print("─" * 80)
 
         summary[symbol] = {
             "rmse": float(rmse),
@@ -200,11 +210,13 @@ def run_holdout():
             "corr": float(corr)
         }
 
-    print("\n================ FINAL SUMMARY ================\n")
+    print("\n" + "═" * 80)
+    print("📊 FINAL HOLDOUT SUMMARY")
+    print("═" * 80)
 
     for symbol, stats in summary.items():
 
-        print(symbol)
+        print(f"🔹 {symbol}")
 
         print(
             f"RMSE={stats['rmse']:.6f} "
@@ -214,7 +226,8 @@ def run_holdout():
 
         print()
 
-    print("Holdout test completed.")
+    print("✔ Holdout evaluation completed successfully")
+    print("═" * 80 + "\n")
 
 
 if __name__ == "__main__":

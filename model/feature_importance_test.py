@@ -11,13 +11,27 @@ from feature_engine import FeatureTransformer
 
 def load_data():
 
+    print("\n" + "═" * 80)
+    print("🔬 FEATURE IMPORTANCE ANALYSIS ENGINE")
+    print("═" * 80)
+    print("📂 Loading dataset...")
+
     df = pd.read_csv(DATA_PATH)
+
+    print(f"✔ Dataset loaded | Rows: {len(df):,}")
 
     feature_engine = FeatureTransformer()
     features = feature_engine.get_feature_list()
 
+    print(f"🧠 Features detected: {len(features)}")
+    print("─" * 80)
+
     df.replace([np.inf, -np.inf], np.nan, inplace=True)
     df.dropna(inplace=True)
+
+    print("🧹 Dataset cleaned (NaN / Inf removed)")
+    print(f"📊 Clean rows: {len(df):,}")
+    print("═" * 80)
 
     return df, features
 
@@ -28,7 +42,6 @@ def make_signal_target(y, X):
     vol = vol.fillna(vol.median())
 
     signal = y / (vol + 1e-6)
-
     signal = np.tanh(signal * 5)
 
     return signal
@@ -50,16 +63,22 @@ def train_feature_importance():
         random_state=42
     )
 
+    print("\n🚀 Starting feature importance training...\n")
+
     for symbol in SYMBOLS:
 
-        print("\n" + "=" * 60)
-        print(symbol)
-        print("=" * 60)
+        print("\n" + "═" * 80)
+        print(f"📈 SYMBOL ANALYSIS: {symbol}")
+        print("═" * 80)
 
         data = df[df["symbol"] == symbol].copy()
 
         if len(data) < 1000:
+            print(f"⚠️ Skipped {symbol} (insufficient data: {len(data):,})")
             continue
+
+        print(f"📊 Training samples: {len(data):,}")
+        print("🧠 Preparing feature matrix...")
 
         X = data[features]
 
@@ -67,6 +86,8 @@ def train_feature_importance():
             data["target_short"],
             X
         )
+
+        print("⚙️ Training XGBoost model...")
 
         model = XGBRegressor(**MODEL_PARAMS)
 
@@ -76,20 +97,28 @@ def train_feature_importance():
             verbose=False
         )
 
+        print("✔ Model trained successfully")
+        print("📊 Extracting feature importance...")
+
         importance = pd.Series(
             model.feature_importances_,
             index=features
         )
 
-        importance = importance.sort_values(
-            ascending=False
-        )
+        importance = importance.sort_values(ascending=False)
 
-        print("\nTOP 20 FEATURES\n")
+        print("\n" + "─" * 80)
+        print("🏆 TOP 20 FEATURES")
+        print("─" * 80)
 
-        print(
-            importance.head(20)
-        )
+        top20 = importance.head(20)
+
+        for i, (feat, val) in enumerate(top20.items(), 1):
+            print(f"{i:02d}. {feat:<30} {val:.6f}")
+
+        print("─" * 80)
+        print(f"✔ Analysis complete for {symbol}")
+        print("═" * 80)
 
 
 if __name__ == "__main__":

@@ -11,7 +11,10 @@ from config import MODEL_PATH, DATA_PATH
 
 def evaluate():
 
-    print("Loading dataset...")
+    print("\n" + "═" * 80)
+    print("🧪  QUANT MODEL EVALUATION ENGINE")
+    print("═" * 80)
+
     df = pd.read_csv(DATA_PATH)
 
     if "symbol" not in df.columns:
@@ -20,82 +23,58 @@ def evaluate():
     if "time" in df.columns:
         df = df.sort_values("time")
 
+    print(f"📊 Rows available: {len(df):,}")
+
     transformer = FeatureTransformer()
     features = transformer.get_feature_list()
 
-    print("Loading trained model...")
     model_dict = joblib.load(MODEL_PATH)
 
     all_symbols = df["symbol"].unique()
 
-    print("Model symbols:", list(model_dict.keys()))
-    print("Dataset symbols:", all_symbols)
-
-    print("\nEvaluating symbols:", all_symbols)
+    print(f"📈 Models loaded: {list(model_dict.keys())}")
 
     for symbol in all_symbols:
 
-        print(f"\n========== Evaluating {symbol} ==========")
+        print("\n" + "═" * 80)
+        print(f"📈 SYMBOL: {symbol}")
+        print("═" * 80)
 
-        symbol_model = model_dict.get(symbol)
+        model = model_dict.get(symbol)
 
-        if symbol_model is None:
-            print(f"No trained model for {symbol}, skipping.")
+        if model is None:
+            print("⚠️ No model for symbol")
             continue
 
-        df_symbol = df[df["symbol"] == symbol].copy()
+        df_s = df[df["symbol"] == symbol].copy().reset_index(drop=True)
 
-        if "time" in df_symbol.columns:
-            df_symbol = df_symbol.sort_values("time")
+        print(f"📊 Samples: {len(df_s):,}")
 
-        df_symbol = df_symbol.reset_index(drop=True)
+        missing = [f for f in features if f not in df_s.columns]
+        if missing:
+            raise RuntimeError(f"{symbol} missing features: {missing}")
 
-        # ----------------------------
-        # Feature validation
-        # ----------------------------
-        missing_features = [f for f in features if f not in df_symbol.columns]
+        X = df_s[features].replace([np.inf, -np.inf], np.nan).fillna(0)
 
-        if missing_features:
-            raise RuntimeError(f"{symbol} missing features: {missing_features}")
+        print("🧠 Predicting...")
+        preds = model.predict(X)
 
-        X = df_symbol[features].copy()
+        print(f"✔ Predictions: {len(preds):,}")
 
-        X = X.replace([np.inf, -np.inf], np.nan)
-        X = X.fillna(0)
+        # ===========================
+        # DEBUG SIGNAL STATS
+        # ===========================
+        print("\n📊 Signal Stats:")
+        print(pd.Series(preds).describe())
 
-        # ----------------------------
-        # SINGLE MODEL PREDICTION (FIXED)
-        # ----------------------------
-        predictions = symbol_model.predict(X)
+        print("\n📉 Running backtest...")
+        results = run_backtest(df_s, preds)
 
-        # ----------------------------
-        # Safety check
-        # ----------------------------
-        if np.isnan(predictions).any():
-            print("WARNING: NaN predictions detected")
-            predictions = np.nan_to_num(predictions)
+        if results:
+            print("\n📊 FINAL RESULT")
+            print(results)
 
-        # ----------------------------
-        # Backtest
-        # ----------------------------
-        results = run_backtest(
-            df_symbol.reset_index(drop=True),
-            predictions
-        )
-
-        # ----------------------------
-        # Stats
-        # ----------------------------
-        print("\nPrediction statistics:")
-        print(pd.Series(predictions).describe())
-
-        if "future_return" in df_symbol.columns:
-            corr = np.corrcoef(predictions, df_symbol["future_return"])[0, 1]
-            print("\nCorrelation with future_return:", corr)
-
-        print("\nSymbol evaluation finished.")
-
-    print("\nMulti-symbol evaluation completed.")
+        print("\n✔ Done:", symbol)
 
 
 if __name__ == "__main__":

@@ -11,6 +11,11 @@ from feature_engine import FeatureTransformer
 
 def build_dataset():
 
+    print("\n" + "═" * 80)
+    print("📡  MARKET DATASET CONSTRUCTION ENGINE")
+    print("═" * 80)
+    print("🔄 Initializing market data pipeline...\n")
+
     collector = MarketDataCollector()
     transformer = FeatureTransformer()
 
@@ -18,11 +23,14 @@ def build_dataset():
 
     for symbol in SYMBOLS:
 
-        print(f"\nBuilding dataset for {symbol}")
+        print("\n" + "═" * 80)
+        print(f"🌍 PROCESSING SYMBOL: {symbol}")
+        print("═" * 80)
 
         # ======================
         # Fetch M5 Data
         # ======================
+        print("📥 Acquiring M5 historical data...")
 
         df_m5 = collector.fetch_history(
             symbol=symbol,
@@ -30,15 +38,18 @@ def build_dataset():
             total_candles=500000
         )
 
-        if df_m5 is None:
-            print(f"{symbol} M5 data failed")
+        if df_m5 is None or df_m5.empty:
+            print(f"❌ M5 acquisition failed for {symbol}")
             continue
 
-        df_m5 = df_m5.sort_values("time").reset_index(drop=True)
+        df_m5 = df_m5.sort_values("time").drop_duplicates("time").reset_index(drop=True)
+
+        print(f"✔ M5 loaded | Candles: {len(df_m5):,}")
 
         # ======================
         # Fetch H1 Data
         # ======================
+        print("📥 Acquiring H1 context data...")
 
         df_h1 = collector.fetch_history(
             symbol=symbol,
@@ -46,26 +57,36 @@ def build_dataset():
             total_candles=40000
         )
 
-        if df_h1 is None:
-            print(f"{symbol} H1 data failed")
+        if df_h1 is None or df_h1.empty:
+            print(f"❌ H1 acquisition failed for {symbol}")
             continue
 
-        df_h1 = df_h1.sort_values("time").reset_index(drop=True)
+        df_h1 = df_h1.sort_values("time").drop_duplicates("time").reset_index(drop=True)
+
+        print(f"✔ H1 loaded | Candles: {len(df_h1):,}")
 
         # ======================
         # Feature Engineering
         # ======================
+        print("🧮 Generating market features...")
 
         df_m5 = transformer.build_features(df_m5)
         df_h1 = transformer.build_features(df_h1)
 
-        # ======================
-        # Select H1 Context
-        # ======================
+        print("✔ Feature engineering completed")
 
-        h1_cols = ["time", "ma20", "rsi", "trend_strength"]
+        # ======================
+        # H1 Context Reduction (SAFE)
+        # ======================
+        print("📊 Preparing higher timeframe context...")
 
-        df_h1 = df_h1[h1_cols].copy()
+        required = ["time", "ma20", "rsi", "trend_strength"]
+        missing = [c for c in required if c not in df_h1.columns]
+
+        if missing:
+            raise RuntimeError(f"H1 missing features: {missing}")
+
+        df_h1 = df_h1[required].copy()
 
         df_h1.rename(columns={
             "ma20": "h1_ma20",
@@ -73,20 +94,28 @@ def build_dataset():
             "trend_strength": "h1_trend_strength"
         }, inplace=True)
 
+        # IMPORTANT: ensure sorted BEFORE merge_asof
+        df_m5 = df_m5.sort_values("time")
+        df_h1 = df_h1.sort_values("time")
+
         # ======================
-        # Merge MTF (safe)
+        # Multi-timeframe Merge
         # ======================
+        print("🔗 Building multi-timeframe context...")
 
         df = pd.merge_asof(
-            df_m5.sort_values("time"),
-            df_h1.sort_values("time"),
+            df_m5,
+            df_h1,
             on="time",
             direction="backward"
         )
 
+        print("✔ Multi-timeframe merge completed")
+
         # ======================
         # Alignment Signals
         # ======================
+        print("🧭 Calculating trend alignment signals...")
 
         df["h1_trend_bias"] = np.sign(df["h1_trend_strength"])
 
@@ -96,69 +125,77 @@ def build_dataset():
         ).astype(int)
 
         # ======================
-        # Target Construction (LEAKAGE SAFE)
+        # Targets
         # ======================
+        print("🎯 Constructing prediction targets...")
 
         future_close = df["close"].shift(-FUTURE_PERIOD)
-
         raw_return = (future_close - df["close"]) / df["close"]
 
-        # Bounded, stable target
         df["future_return"] = np.tanh(raw_return)
 
-        # ======================
-        # Multi Targets (aligned + safe)
-        # ======================
-
-        df["future_close_short"] = df["close"].shift(-6)
-        df["future_close_long"] = df["close"].shift(-24)
-
         df["target_short"] = np.tanh(
-            (df["future_close_short"] - df["close"]) / df["close"]
+            (df["close"].shift(-6) - df["close"]) / df["close"]
         )
 
         df["target_long"] = np.tanh(
-            (df["future_close_long"] - df["close"]) / df["close"]
-        )
-
-        df.drop(
-            columns=["future_close_short", "future_close_long"],
-            inplace=True
+            (df["close"].shift(-24) - df["close"]) / df["close"]
         )
 
         # ======================
         # Spread Safety
         # ======================
-
         if "spread" not in df.columns:
             df["spread"] = 0
 
         # ======================
         # Final Cleanup
         # ======================
+        print("🧹 Performing dataset sanitation...")
 
-        # Remove rows where future data not available
         df = df.iloc[:-FUTURE_PERIOD].copy()
-
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
         df.dropna(inplace=True)
 
         df["symbol"] = symbol
 
+        if len(df) == 0:
+            print(f"⚠️ Empty dataset after cleaning for {symbol}")
+            continue
+
+        print("✔ Data sanitation completed")
+
+        print("─" * 80)
+        print(f"✅ SYMBOL COMPLETE: {symbol}")
+        print(f"📊 Final rows: {len(df):,}")
+        print("─" * 80)
+
         all_symbol_data.append(df)
 
+    print("\n🔌 Disconnecting market data source...")
     collector.disconnect()
 
     if not all_symbol_data:
         raise RuntimeError("Dataset build failed for all symbols")
 
+    print("\n📦 Combining symbol datasets...")
+
     final_df = pd.concat(all_symbol_data, ignore_index=True)
+
+    print("💾 Writing dataset to disk...")
 
     final_df.to_csv(DATA_PATH, index=False)
 
-    print("\nDataset built successfully.")
-    print("Total rows:", len(final_df))
-    print("Symbols:", final_df["symbol"].unique())
+    print("\n" + "═" * 80)
+    print("📊 DATASET BUILD REPORT")
+    print("═" * 80)
+
+    print(f"📈 Total Rows     : {len(final_df):,}")
+    print(f"🧩 Symbols Loaded : {final_df['symbol'].nunique()}")
+    print(f"💾 Output File    : {DATA_PATH}")
+
+    print("\n🚀 Dataset generation completed successfully")
+    print("═" * 80 + "\n")
 
 
 if __name__ == "__main__":

@@ -13,13 +13,13 @@ from feature_engine import FeatureTransformer
 
 
 # ===============================
-# Load Data
+# LOAD DATA
 # ===============================
 def load_data():
     df = pd.read_csv(DATA_PATH)
 
     if "time" in df.columns:
-        df.drop(columns=["time"], inplace=True)
+        df = df.sort_values("time")
 
     feature_engine = FeatureTransformer()
     feature_list = feature_engine.get_feature_list()
@@ -35,33 +35,30 @@ def load_data():
 
 
 # ===============================
-# FIXED TARGET (NO TANH)
+# CLEAN TARGET (IMPORTANT FIX)
 # ===============================
-def make_signal_target(y, X):
-    vol = X["volatility"].replace(0, np.nan)
-    vol = vol.fillna(vol.median())
-
-    signal = y / (vol + 1e-6)
-    signal = np.sign(signal) * np.log1p(np.abs(signal))
-
-    return signal
+def make_target(y):
+    """
+    Keep target in stable bounded regression space only once.
+    """
+    return y.replace([np.inf, -np.inf], np.nan).fillna(0)
 
 
 # ===============================
-# BETTER WEIGHTS
+# WEIGHTS (FIXED STABILITY)
 # ===============================
 def compute_weights(y, X):
     vol = X["volatility"].replace(0, np.nan)
     vol = vol.fillna(vol.median())
 
     weight = np.abs(y) / (vol + 1e-6)
-    weight = np.sqrt(weight)
 
-    return weight
+    # stabilize extreme weights
+    return np.clip(weight, 0.3, 3.0)
 
 
 # ===============================
-# REALISTIC DIRECTIONAL ACC
+# DIRECTIONAL ACCURACY
 # ===============================
 def directional_accuracy(y_true, y_pred):
     threshold = 1e-5
@@ -71,26 +68,24 @@ def directional_accuracy(y_true, y_pred):
 
     mask = true_dir != 0
 
-    if np.sum(mask) == 0:
+    if mask.sum() == 0:
         return 0.0
 
     return np.mean(true_dir[mask] == pred_dir[mask])
 
 
 # ===============================
-# TRAINING
+# TRAIN
 # ===============================
 def train():
 
     print("\n" + "═" * 80)
-    print("🧠  QUANT TRAINING ENGINE INITIALIZED")
+    print("🧠 QUANT TRAINING ENGINE INITIALIZED")
     print("═" * 80)
-    print("📦 Loading dataset...\n")
 
     df = load_data()
 
-    print("✔ Dataset loaded successfully")
-    print(f"📊 Rows: {len(df)}")
+    print(f"✔ Dataset loaded | Rows: {len(df):,}")
     print("─" * 80)
 
     feature_engine = FeatureTransformer()
@@ -122,14 +117,16 @@ def train():
         data = df[df["symbol"] == symbol].copy()
 
         if len(data) < 1200:
-            print(f"⚠️  SKIPPED {symbol} | insufficient data ({len(data)})")
+            print(f"⚠️ SKIPPED {symbol} | insufficient data")
             continue
 
-        print(f"📊 Active samples: {len(data)}")
-        print("🔧 Preparing feature matrix...")
+        # CRITICAL: enforce time ordering
+        data = data.sort_values("time").reset_index(drop=True)
 
         X = data[features]
-        y = make_signal_target(data["target_short"], X)
+
+        # FIX: use raw target_short directly (NO double transform)
+        y = make_target(data["target_short"])
 
         tscv = TimeSeriesSplit(n_splits=5, gap=FUTURE_PERIOD)
 
@@ -139,7 +136,7 @@ def train():
         for i, (train_idx, val_idx) in enumerate(tscv.split(X)):
 
             print("\n" + "·" * 60)
-            print(f"🔁 FOLD {i+1}/5 ACTIVE")
+            print(f"🔁 FOLD {i+1}/5")
             print("·" * 60)
 
             X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
@@ -155,21 +152,21 @@ def train():
             )
 
             pred = model.predict(X_val)
-            pred_eval = np.clip(pred, -3, 3)
 
-            rmse = np.sqrt(mean_squared_error(y_val, pred_eval))
-            acc = directional_accuracy(y_val.values, pred_eval)
+            # NO CLIPPING (important fix)
+            rmse = np.sqrt(mean_squared_error(y_val, pred))
+            acc = directional_accuracy(y_val.values, pred)
 
             rmse_list.append(rmse)
             acc_list.append(acc)
 
-            print(f"📉 RMSE        : {rmse:.6f}")
-            print(f"🎯 Direction   : {acc:.4f}")
+            print(f"📉 RMSE      : {rmse:.6f}")
+            print(f"🎯 ACC       : {acc:.4f}")
 
         print("\n" + "─" * 80)
         print(f"📊 SYMBOL RESULT: {symbol}")
-        print(f"   RMSE  (avg): {np.mean(rmse_list):.6f}")
-        print(f"   ACC   (avg): {np.mean(acc_list):.4f}")
+        print(f"RMSE AVG : {np.mean(rmse_list):.6f}")
+        print(f"ACC  AVG : {np.mean(acc_list):.4f}")
         print("─" * 80)
 
         final_model = XGBRegressor(**MODEL_PARAMS)
@@ -193,13 +190,11 @@ def train():
     print("═" * 80)
 
     for k, v in report.items():
-        print(f"🔹 {k:<10} | RMSE: {v['rmse']:.6f} | ACC: {v['acc']:.4f}")
+        print(f"{k:<10} | RMSE: {v['rmse']:.6f} | ACC: {v['acc']:.4f}")
 
-    print("\n💾 Saving trained models...")
     joblib.dump(models, MODEL_PATH)
 
-    print("✔ SAVE COMPLETE")
-    print(f"📁 Path: {MODEL_PATH}")
+    print("\n✔ MODEL SAVED:", MODEL_PATH)
     print("═" * 80 + "\n")
 
 

@@ -12,84 +12,117 @@ def run_backtest(df, predictions):
     if len(df) != len(predictions):
         raise RuntimeError("Backtester: prediction length mismatch")
 
-    predictions = np.nan_to_num(predictions)
+    print("\n" + "═" * 80)
+    print("📉 STRATEGY BACKTEST ENGINE")
+    print("═" * 80)
+    print(f"📊 Samples     : {len(df):,}")
+    print(f"🧠 Signals     : {len(predictions):,}")
+    print(f"🎯 Threshold   : {SIGNAL_THRESHOLD}")
+    print(f"💸 Spread cost : {SPREAD_COST}")
+    print("─" * 80)
 
-    pred_mean = predictions.mean()
-    pred_std = predictions.std() + 1e-9
-
-    z_signal = (predictions - pred_mean) / pred_std
+    # =========================================================
+    # FIX 1: SCALE SIGNALS (CRITICAL)
+    # Convert raw regression output → z-score style signal
+    # =========================================================
+    signals = np.nan_to_num(predictions)
+    signals = signals / (np.std(signals) + 1e-9)
 
     pnl = []
-    trades = []
 
-    N = len(z_signal) - FUTURE_PERIOD - 1
+    N = len(signals) - FUTURE_PERIOD - 1
+
+    print(f"⚙️ Backtest horizon: {max(N, 0):,}")
+    print("🚀 Running simulation...\n")
+
+    active_trades = 0
 
     for i in range(max(N, 0)):
 
-        signal = z_signal[i]
+        signal = signals[i]
 
+        # trade filter
         if abs(signal) < SIGNAL_THRESHOLD:
             continue
 
-        entry_price = df["open"].iloc[i + 1]
+        active_trades += 1
+
+        entry_price = df["close"].iloc[i + 1]
         exit_price = df["close"].iloc[i + 1 + FUTURE_PERIOD]
 
-        raw_return = (exit_price - entry_price) / entry_price
+        price_return = (exit_price - entry_price) / entry_price
 
-        spread_cost = SPREAD_COST
+        position_size = np.clip(abs(signal) / 2.5, 0, 1)
 
-        position_size = np.clip(abs(signal) / 3.0, 0, 1)
+        spread = SPREAD_COST
 
         if signal > 0:
-            trade_pnl = position_size * (raw_return - spread_cost)
+            trade_return = position_size * (price_return - spread)
         else:
-            trade_pnl = position_size * (-raw_return - spread_cost)
+            trade_return = position_size * (-price_return - spread)
 
-        pnl.append(trade_pnl)
-        trades.append(trade_pnl)
+        pnl.append(trade_return)
+
+        if len(pnl) % 5000 == 0:
+            print(f"📊 Trades processed: {len(pnl):,}")
 
     pnl = np.array(pnl)
-    trades = np.array(trades)
+
+    print(f"\n📊 Active trade signals: {active_trades:,}")
 
     if len(pnl) == 0:
-        print("No trades executed.")
+        print("\n⚠️ No trades executed")
+        print("═" * 80)
         return {}
 
-    total_return = pnl.sum()
-    win_rate = (trades > 0).mean()
+    # =========================================================
+    # METRICS
+    # =========================================================
+    equity = np.cumsum(pnl)
 
-    sharpe = 0
-    if trades.std() > 0:
-        sharpe = trades.mean() / (trades.std() + 1e-9)
+    running_max = np.maximum.accumulate(equity)
+    drawdown = equity - running_max
 
+    total_return = equity[-1]
+    win_rate = np.mean(pnl > 0)
+
+    avg_return = np.mean(pnl)
+    std_return = np.std(pnl) + 1e-9
+
+    sharpe = avg_return / std_return
     sharpe_annual = sharpe * np.sqrt(288 * 252)
 
-    cumulative = np.cumsum(pnl)
-    running_max = np.maximum.accumulate(cumulative)
-    drawdown = cumulative - running_max
+    max_drawdown = np.min(drawdown)
 
-    max_drawdown = drawdown.min()
-
-    trade_count = len(trades)
+    trade_count = len(pnl)
     trade_frequency = trade_count / max(N, 1)
 
-    print("========== BACKTEST RESULTS ==========")
-    print(f"Total Return      : {total_return:.6f}")
-    print(f"Win Rate          : {win_rate:.4f}")
-    print(f"Sharpe Ratio      : {sharpe:.6f}")
-    print(f"Annual Sharpe     : {sharpe_annual:.6f}")
-    print(f"Max Drawdown      : {max_drawdown:.6f}")
-    print(f"Number of Trades  : {trade_count}")
-    print(f"Trade Frequency   : {trade_frequency:.6f}")
-    print("======================================")
+    # =========================================================
+    # REPORT
+    # =========================================================
+    print("\n" + "═" * 80)
+    print("📊 BACKTEST PERFORMANCE REPORT")
+    print("═" * 80)
+
+    print(f"💰 Total Return     : {total_return:.6f}")
+    print(f"📈 Win Rate         : {win_rate:.4f}")
+    print(f"⚖️ Sharpe Ratio     : {sharpe:.6f}")
+    print(f"📊 Annual Sharpe    : {sharpe_annual:.6f}")
+    print(f"📉 Max Drawdown     : {max_drawdown:.6f}")
+    print(f"🔁 Trades           : {trade_count:,}")
+    print(f"⏱ Trade Frequency   : {trade_frequency:.6f}")
+
+    print("═" * 80)
+    print("✔ Backtest completed successfully")
+    print("═" * 80)
 
     return {
         "pnl": pnl,
-        "total_return": total_return,
-        "win_rate": win_rate,
-        "sharpe": sharpe,
-        "annual_sharpe": sharpe_annual,
-        "max_drawdown": max_drawdown,
-        "trade_count": trade_count,
-        "trade_frequency": trade_frequency
+        "total_return": float(total_return),
+        "win_rate": float(win_rate),
+        "sharpe": float(sharpe),
+        "annual_sharpe": float(sharpe_annual),
+        "max_drawdown": float(max_drawdown),
+        "trade_count": int(trade_count),
+        "trade_frequency": float(trade_frequency)
     }
