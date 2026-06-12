@@ -1,7 +1,7 @@
 # filename: backtester.py
 
 import numpy as np
-from config import FUTURE_PERIOD, SPREAD_COST, SIGNAL_THRESHOLD
+from config_model import FUTURE_PERIOD, SPREAD_COST, SIGNAL_THRESHOLD 
 
 
 def run_backtest(df, predictions):
@@ -22,8 +22,7 @@ def run_backtest(df, predictions):
     print("─" * 80)
 
     # =========================================================
-    # FIX 1: SCALE SIGNALS (CRITICAL)
-    # Convert raw regression output → z-score style signal
+    # SCALE SIGNALS
     # =========================================================
     signals = np.nan_to_num(predictions)
     signals = signals / (np.std(signals) + 1e-9)

@@ -5,7 +5,7 @@ import numpy as np
 
 from xgboost import XGBRegressor
 
-from config import DATA_PATH, SYMBOLS
+from config_model import DATA_PATH, SYMBOLS
 from feature_engine import FeatureTransformer
 
 

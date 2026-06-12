@@ -6,7 +6,7 @@ import joblib
 
 from backtester import run_backtest
 from feature_engine import FeatureTransformer
-from config import MODEL_PATH, DATA_PATH
+from config_model import MODEL_PATH, DATA_PATH
 
 
 def evaluate():

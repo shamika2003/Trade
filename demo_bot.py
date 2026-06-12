@@ -2,7 +2,7 @@ import time
 import signal
 import MetaTrader5 as mt5
 
-from config import SYMBOLS, DEFAULT_CAPITAL
+from config_core import SYMBOLS, DEFAULT_CAPITAL
 from core.data_fetcher import initialize_mt5, get_mtf_data
 from core.predictor import Predictor
 from core.feature_engine_live import FeatureTransformerLive

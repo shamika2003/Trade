@@ -3,7 +3,7 @@
 import joblib
 import numpy as np
 from core.logger import log
-from config import CONFIDENCE_WEIGHT
+from config_core import CONFIDENCE_WEIGHT
 
 
 class Predictor:

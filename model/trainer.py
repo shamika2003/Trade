@@ -8,7 +8,7 @@ from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import mean_squared_error
 from xgboost import XGBRegressor
 
-from config import DATA_PATH, MODEL_PATH, FUTURE_PERIOD, SYMBOLS
+from config_model import DATA_PATH, MODEL_PATH, FUTURE_PERIOD, SYMBOLS
 from feature_engine import FeatureTransformer
 
 
@@ -35,7 +35,7 @@ def load_data():
 
 
 # ===============================
-# CLEAN TARGET (IMPORTANT FIX)
+# CLEAN TARGET
 # ===============================
 def make_target(y):
     """
@@ -45,7 +45,7 @@ def make_target(y):
 
 
 # ===============================
-# WEIGHTS (FIXED STABILITY)
+# WEIGHTS 
 # ===============================
 def compute_weights(y, X):
     vol = X["volatility"].replace(0, np.nan)
@@ -120,12 +120,10 @@ def train():
             print(f"⚠️ SKIPPED {symbol} | insufficient data")
             continue
 
-        # CRITICAL: enforce time ordering
         data = data.sort_values("time").reset_index(drop=True)
 
         X = data[features]
 
-        # FIX: use raw target_short directly (NO double transform)
         y = make_target(data["target_short"])
 
         tscv = TimeSeriesSplit(n_splits=5, gap=FUTURE_PERIOD)
@@ -153,7 +151,6 @@ def train():
 
             pred = model.predict(X_val)
 
-            # NO CLIPPING (important fix)
             rmse = np.sqrt(mean_squared_error(y_val, pred))
             acc = directional_accuracy(y_val.values, pred)
 

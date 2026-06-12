@@ -5,7 +5,7 @@ import numpy as np
 import MetaTrader5 as mt5
 import signal
 
-from config import (
+from config_core import (
     COOLDOWN_SECONDS,
     BOT_MODE,
     SYMBOLS,

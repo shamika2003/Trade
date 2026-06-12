@@ -20,9 +20,9 @@ class MarketDataCollector:
         print("═" * 80)
         print("🔄 Establishing MetaTrader 5 connection...")
 
-        if not mt5.initialize():
+        if not mt5.initialize(): # type: ignore
             raise RuntimeError(
-                f"❌ MT5 initialize failed: {mt5.last_error()}"
+                f"❌ MT5 initialize failed: {mt5.last_error()}" # type: ignore
             )
 
         self.connected = True
@@ -36,7 +36,7 @@ class MarketDataCollector:
 
             print("\n🔌 Closing MetaTrader 5 connection...")
 
-            mt5.shutdown()
+            mt5.shutdown() # type: ignore
 
             self.connected = False
 
@@ -72,7 +72,7 @@ class MarketDataCollector:
                     f"{start:,} → {end:,}"
                 )
 
-                rates = mt5.copy_rates_from_pos(
+                rates = mt5.copy_rates_from_pos( # type: ignore
                     symbol,
                     timeframe,
                     start,
@@ -83,7 +83,7 @@ class MarketDataCollector:
 
                     print(
                         f"⚠️ Fetch warning | "
-                        f"{symbol} | {mt5.last_error()}"
+                        f"{symbol} | {mt5.last_error()}" # type: ignore
                     )
 
                     time.sleep(retry_delay)

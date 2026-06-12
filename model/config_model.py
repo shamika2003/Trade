@@ -9,8 +9,6 @@ MODEL_PATH = "model/trading_model.pkl"
 
 FUTURE_PERIOD = 12
 
-# ✅ FIX: realistic trading activation threshold
-# (1.8 was too strict → blocked all trades)
 SIGNAL_THRESHOLD = 0.4
 
 SPREAD_COST = 0.0002

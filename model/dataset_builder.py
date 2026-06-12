@@ -5,7 +5,7 @@ import numpy as np
 import MetaTrader5 as mt5
 
 from data_collector import MarketDataCollector
-from config import FUTURE_PERIOD, DATA_PATH, SYMBOLS
+from config_model import FUTURE_PERIOD, DATA_PATH, SYMBOLS
 from feature_engine import FeatureTransformer
 
 
@@ -76,7 +76,7 @@ def build_dataset():
         print("✔ Feature engineering completed")
 
         # ======================
-        # H1 Context Reduction (SAFE)
+        # H1 Context Reduction
         # ======================
         print("📊 Preparing higher timeframe context...")
 
@@ -88,15 +88,14 @@ def build_dataset():
 
         df_h1 = df_h1[required].copy()
 
-        df_h1.rename(columns={
+        df_h1.rename(columns={ # type: ignore
             "ma20": "h1_ma20",
             "rsi": "h1_rsi",
             "trend_strength": "h1_trend_strength"
         }, inplace=True)
 
-        # IMPORTANT: ensure sorted BEFORE merge_asof
-        df_m5 = df_m5.sort_values("time")
-        df_h1 = df_h1.sort_values("time")
+        df_m5 = df_m5.sort_values("time") # type: ignore
+        df_h1 = df_h1.sort_values("time") # type: ignore
 
         # ======================
         # Multi-timeframe Merge

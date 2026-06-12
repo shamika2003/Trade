@@ -1,6 +1,6 @@
 # filename: signal_engine.py
 
-from config import SIGNAL_THRESHOLD
+from config_core import SIGNAL_THRESHOLD
 from core.logger import log  # <-- custom logger
 
 

@@ -6,7 +6,7 @@ import os
 import csv
 import numpy as np
 
-from config import (
+from config_core import (
     TRADE_LOT,
     MAX_OPEN_TRADES,
     MAX_TOTAL_TRADES,
