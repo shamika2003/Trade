@@ -1,15 +1,17 @@
+# filename: trade_bot.py
+
 import time
 import signal
-import MetaTrader5 as mt5
 
-from config_core import SYMBOLS, DEFAULT_CAPITAL
 from core.data_fetcher import initialize_mt5, get_mtf_data
-from core.predictor import Predictor
 from core.feature_engine_live import FeatureTransformerLive
-from core.executor import BrainExecutor
-from core.brain_core import TradingBrainCore
+from core.core_engine import CoreEngine
 from core.logger import log
 
+
+# =========================
+# GLOBAL CONTROL
+# =========================
 running = True
 
 
@@ -23,66 +25,82 @@ signal.signal(signal.SIGINT, stop_bot)
 signal.signal(signal.SIGTERM, stop_bot)
 
 
+# =========================
+# CAPITAL (optional future use)
+# =========================
 def ask_capital():
     try:
-        capital = float(input("Enter Trading Capital (USD): "))
-        if capital > 0:
-            return capital
-    except Exception:
-        pass
-    return DEFAULT_CAPITAL
+        return float(input("Enter Trading Capital (USD): "))
+    except:
+        return 1000.0
 
 
+# =========================
+# MAIN BOT LOOP
+# =========================
 def main():
+
+    # 1. INIT SYSTEMS
     initialize_mt5()
     capital = ask_capital()
 
-    executor = BrainExecutor(capital=capital)
-
-    predictors = {s: Predictor() for s in SYMBOLS}
     transformer = FeatureTransformerLive()
 
-    brains = {
-        s: TradingBrainCore(s, predictors[s], transformer, executor)
-        for s in SYMBOLS
-    }
+    # CORE ENGINE (we will build next)
+    core = CoreEngine(capital=capital)
 
-    log("INFO | Brain Bot Started")
+    log("INFO | Trade Bot Started")
 
+    # =========================
+    # MAIN LOOP
+    # =========================
     while running:
-        start = time.time()
 
-        for symbol in SYMBOLS:
-            try:
-                if not mt5.symbol_select(symbol, True):
-                    continue
+        loop_start = time.time()
 
-                if not mt5.terminal_info():
-                    time.sleep(3)
-                    continue
+        try:
+
+            # =========================
+            # GET DATA PER SYMBOL
+            # =========================
+            for symbol in core.symbols:
 
                 df_m5, df_h1 = get_mtf_data(symbol)
+
                 if df_m5 is None or df_h1 is None:
                     continue
 
+                # =========================
+                # FEATURE ENGINE
+                # =========================
                 df = transformer.build_multi_timeframe_features(df_m5, df_h1)
 
                 if df is None or df.empty:
                     continue
 
                 df = df.replace([float("inf"), float("-inf")], 0)
-
-                # 🔥 CRITICAL FIX: enforce symbol ALWAYS
                 df["symbol"] = symbol
 
-                brains[symbol].decide_and_act(df)
+                # =========================
+                # CORE PIPELINE
+                # =========================
+                core.process(symbol, df)
 
-            except Exception as e:
-                log(f"ERROR | {symbol}: {e}")
-                time.sleep(1)
+        except Exception as e:
+            log(f"ERROR | Main loop: {e}")
 
-        time.sleep(max(1, 5 - (time.time() - start)))
+        # =========================
+        # LOOP CONTROL
+        # =========================
+        elapsed = time.time() - loop_start
+        time.sleep(max(1, 5 - elapsed))
 
 
+    log("INFO | Bot stopped")
+
+
+# =========================
+# ENTRY
+# =========================
 if __name__ == "__main__":
     main()
