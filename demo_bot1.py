@@ -17,7 +17,7 @@ from config_core import (
     MAX_OPEN_TRADES,
     MAX_TOTAL_TRADES
 )
-from core.data_fetcher import initialize_mt5, get_mtf_data
+from core.data_fetcher_online import initialize_mt5, get_mtf_data
 from core.predictor import Predictor
 from core.executor import BrainExecutor
 from core.feature_engine_live import FeatureTransformerLive

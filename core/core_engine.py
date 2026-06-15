@@ -1,17 +1,13 @@
 # filename: core_engine.py
 
 import MetaTrader5 as mt5
-import numpy as np
 
 from core.predictor import Predictor
 from core.signal_engine import decide_signal
 from core.executor import BrainExecutor
 from core.logger import log
 
-from config_core import (
-    SYMBOLS,
-    SIGNAL_THRESHOLD,
-)
+from config_core import SYMBOLS, SIGNAL_THRESHOLD
 
 
 # =====================================================
@@ -23,20 +19,34 @@ class CoreEngine:
 
         self.capital = capital
 
-        self.predictors = {s: Predictor() for s in SYMBOLS}
+        self.predictors = {
+            s: Predictor() for s in SYMBOLS
+        }
+
         self.executor = BrainExecutor(capital=capital)
 
         self.last_signal = {}
-        self.active_symbol = None  # IMPORTANT: single-trade lock system
 
         log("INFO | Core Engine initialized")
 
     # =================================================
     # CHECK OPEN POSITIONS
     # =================================================
-    def _has_open_trade(self):
-        positions = mt5.positions_get() or []
-        return len(positions) > 0
+    def _has_open_trade(self, symbol=None):
+
+        positions = mt5.positions_get(symbol=symbol) if symbol else mt5.positions_get()
+        return positions is not None and len(positions) > 0
+
+    # =================================================
+    # AVOID REPEATED SIGNALS
+    # =================================================
+    def _is_repeated_signal(self, symbol, signal):
+
+        if self.last_signal.get(symbol) == signal:
+            return True
+
+        self.last_signal[symbol] = signal
+        return False
 
     # =================================================
     # PROCESS ONE SYMBOL
@@ -46,24 +56,18 @@ class CoreEngine:
         try:
 
             # -----------------------------
-            # BLOCK NEW TRADES IF ONE OPEN
+            # BLOCK IF OPEN TRADE EXISTS
             # -----------------------------
-            if self._has_open_trade():
-
-                # only manage existing trade
+            if self._has_open_trade(symbol):
                 self._manage_open_trade(symbol)
                 return
 
             # -----------------------------
-            # MODEL PREDICTION
+            # PREDICTION
             # -----------------------------
-            feature_list = self.predictors[symbol].models  # safe access check not needed
+            predictor = self.predictors[symbol]
 
-            result = self.predictors[symbol].predict(
-                df,
-                self.predictors[symbol].models.keys() if self.predictors[symbol].models else [],
-                symbol
-            )
+            result = predictor.predict(df, None, symbol)
 
             if result is None:
                 return
@@ -71,21 +75,33 @@ class CoreEngine:
             signal_value = result["signal"]
             confidence = result["confidence"]
 
+            # ================= DEBUG (KEEP THIS) =================
+            log(f"DEBUG | {symbol} signal={signal_value:.6f} conf={confidence:.2f}")
+
             # -----------------------------
-            # BASIC FILTER
+            # FILTER 1: SIGNAL STRENGTH
             # -----------------------------
             if abs(signal_value) < SIGNAL_THRESHOLD:
                 return
 
-            if confidence < 0.55:
+            # -----------------------------
+            # FILTER 2: CONFIDENCE (TEMP RELAXED)
+            # -----------------------------
+            if confidence < 0.0:
                 return
 
             # -----------------------------
-            # FINAL SIGNAL DECISION
+            # CONVERT TO TRADE SIGNAL
             # -----------------------------
             signal = decide_signal(signal_value)
 
             if signal is None:
+                return
+
+            # -----------------------------
+            # FILTER 3: AVOID DUPLICATES
+            # -----------------------------
+            if self._is_repeated_signal(symbol, signal):
                 return
 
             log(f"INFO | {symbol} SIGNAL → {signal} | conf={confidence:.2f}")
@@ -100,34 +116,28 @@ class CoreEngine:
             )
 
             if success:
-                self.active_symbol = symbol
                 log(f"INFO | TRADE OPENED → {symbol}")
 
         except Exception as e:
             log(f"ERROR | CoreEngine {symbol}: {e}")
 
     # =================================================
-    # MANAGE OPEN TRADE (ONLY ONE SYMBOL ACTIVE)
+    # MANAGE OPEN TRADE
     # =================================================
     def _manage_open_trade(self, symbol):
 
-        positions = mt5.positions_get(symbol=symbol) or []
+        positions = mt5.positions_get(symbol=symbol)
 
         if not positions:
-            self.active_symbol = None
             return
 
         position = positions[0]
 
         profit = float(position.profit)
 
-        # -----------------------------
-        # SIMPLE EXIT RULE (TEMP CORE LOGIC)
-        # -----------------------------
-        if profit > 1.0 or profit < -1.0:
+        # simple exit logic
+        if profit > 2.0 or profit < -2.0:
 
-            log(f"INFO | Closing trade {symbol} profit={profit:.2f}")
+            log(f"INFO | Closing {symbol} | profit={profit:.2f}")
 
             self.executor.close_position(position)
-
-            self.active_symbol = None

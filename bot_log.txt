@@ -1,14 +1,9 @@
-2026-06-12 11:45:52.395311 | INFO | INFO | Executor ready | Capital=20.0
-2026-06-12 11:45:54.437820 | INFO | INFO | Models loaded successfully
-2026-06-12 11:45:54.548645 | INFO | INFO | Models loaded successfully
-2026-06-12 11:45:54.659698 | INFO | INFO | Models loaded successfully
-2026-06-12 11:45:54.771789 | INFO | INFO | Models loaded successfully
-2026-06-12 11:45:54.772532 | INFO | INFO | Unified Multi-Symbol Trading Bot Started
-2026-06-12 11:45:54.896731 | INFO | ERROR | EURUSD: Predictor.predict() missing 1 required positional argument: 'symbol'
-2026-06-12 11:45:55.971283 | INFO | ERROR | GBPUSD: Predictor.predict() missing 1 required positional argument: 'symbol'
-2026-06-12 11:45:57.042559 | INFO | ERROR | USDJPY: Predictor.predict() missing 1 required positional argument: 'symbol'
-2026-06-12 11:45:58.117277 | INFO | ERROR | USDCNH: Predictor.predict() missing 1 required positional argument: 'symbol'
-2026-06-12 11:46:00.265635 | INFO | ERROR | EURUSD: Predictor.predict() missing 1 required positional argument: 'symbol'
-2026-06-12 11:46:01.344595 | INFO | ERROR | GBPUSD: Predictor.predict() missing 1 required positional argument: 'symbol'
-2026-06-12 11:46:02.445189 | INFO | ERROR | USDJPY: Predictor.predict() missing 1 required positional argument: 'symbol'
-2026-06-12 11:46:03.515452 | INFO | ERROR | USDCNH: Predictor.predict() missing 1 required positional argument: 'symbol'
+2026-06-15 14:44:55.060655 | INFO | INFO | CSV Data Feed initialized
+2026-06-15 14:44:55.226493 | INFO | INFO | Starting Trade AI
+2026-06-15 14:44:57.285572 | INFO | INFO | Predictor model loaded
+2026-06-15 14:44:57.398009 | INFO | INFO | Predictor model loaded
+2026-06-15 14:44:57.514250 | INFO | INFO | Predictor model loaded
+2026-06-15 14:44:57.626424 | INFO | INFO | Predictor model loaded
+2026-06-15 14:44:57.627170 | INFO | INFO | Executor initialized
+2026-06-15 14:44:57.627588 | INFO | INFO | Core Engine initialized
+2026-06-15 14:44:57.628019 | INFO | INFO | Systems Ready

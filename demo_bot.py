@@ -1,106 +1,155 @@
-# filename: trade_bot.py
+# filename: demo_bot.py
 
 import time
 import signal
 
-from core.data_fetcher import initialize_mt5, get_mtf_data
-from core.feature_engine_live import FeatureTransformerLive
-from core.core_engine import CoreEngine
+from config_core import SYMBOLS
+
+# =====================================================
+# ONLINE MODE (MT5)
+# =====================================================
+from core.data_fetcher_online import (
+    initialize_mt5,
+    get_mtf_data
+)
+
+# =====================================================
+# OFFLINE MODE (CSV REPLAY)
+# =====================================================
+from core.data_fetcher_offline import CSVDataFeed
+csv_feed = CSVDataFeed()
+
+from core.feature_engine_live import (
+    FeatureTransformerLive
+)
+
+from core.core_engine import (
+    CoreEngine
+)
+
 from core.logger import log
 
 
-# =========================
+# =====================================
 # GLOBAL CONTROL
-# =========================
+# =====================================
+
 running = True
 
 
 def stop_bot(sig, frame):
     global running
     running = False
-    log("INFO | Bot shutting down...")
+    log("INFO | Shutdown requested...")
 
 
 signal.signal(signal.SIGINT, stop_bot)
 signal.signal(signal.SIGTERM, stop_bot)
 
 
-# =========================
-# CAPITAL (optional future use)
-# =========================
-def ask_capital():
-    try:
-        return float(input("Enter Trading Capital (USD): "))
-    except:
-        return 1000.0
+# =====================================
+# MODE SWITCH
+# =====================================
+
+USE_OFFLINE = True   # <<< CHANGE THIS ONLY
 
 
-# =========================
-# MAIN BOT LOOP
-# =========================
+# =====================================
+# MAIN
+# =====================================
+
 def main():
 
-    # 1. INIT SYSTEMS
-    initialize_mt5()
-    capital = ask_capital()
+    log("INFO | Starting Trade AI")
+
+    # initialize_mt5()           # Online mode 
 
     transformer = FeatureTransformerLive()
 
-    # CORE ENGINE (we will build next)
-    core = CoreEngine(capital=capital)
+    core = CoreEngine()
 
-    log("INFO | Trade Bot Started")
+    log("INFO | Systems Ready")
 
-    # =========================
-    # MAIN LOOP
-    # =========================
     while running:
 
         loop_start = time.time()
 
         try:
 
-            # =========================
-            # GET DATA PER SYMBOL
-            # =========================
-            for symbol in core.symbols:
+            for symbol in SYMBOLS:
 
-                df_m5, df_h1 = get_mtf_data(symbol)
+                try:
 
-                if df_m5 is None or df_h1 is None:
-                    continue
+                    # =================================================
+                    # FETCH DATA
+                    # =================================================
 
-                # =========================
-                # FEATURE ENGINE
-                # =========================
-                df = transformer.build_multi_timeframe_features(df_m5, df_h1)
+                    if USE_OFFLINE:
+                        # -----------------------------
+                        # OFFLINE MODE (CSV REPLAY)
+                        # -----------------------------
+                        df_m5 = csv_feed.get_next(symbol)
+                        df_h1 = csv_feed.get_next(symbol)
 
-                if df is None or df.empty:
-                    continue
+                    else:
+                        # -----------------------------
+                        # ONLINE MODE (MT5)
+                        # -----------------------------
+                        df_m5, df_h1 = get_mtf_data(symbol)
 
-                df = df.replace([float("inf"), float("-inf")], 0)
-                df["symbol"] = symbol
+                    if df_m5 is None or df_h1 is None:
+                        continue
 
-                # =========================
-                # CORE PIPELINE
-                # =========================
-                core.process(symbol, df)
+                    # =================================================
+                    # FEATURE BUILD
+                    # =================================================
+                    df = transformer.build_multi_timeframe_features(
+                        df_m5,
+                        df_h1
+                    )
+
+                    if df is None or df.empty:
+                        continue
+
+                    # =================================================
+                    # CLEAN
+                    # =================================================
+                    df = df.replace(
+                        [float("inf"), float("-inf")],
+                        0
+                    )
+
+                    df["symbol"] = symbol
+
+                    # =================================================
+                    # MODEL -> SIGNAL -> TRADE
+                    # =================================================
+                    core.process(
+                        symbol=symbol,
+                        df=df
+                    )
+
+                except Exception as e:
+                    log(f"ERROR | {symbol} processing failed: {e}")
 
         except Exception as e:
-            log(f"ERROR | Main loop: {e}")
+            log(f"ERROR | Main Loop: {e}")
 
-        # =========================
-        # LOOP CONTROL
-        # =========================
         elapsed = time.time() - loop_start
-        time.sleep(max(1, 5 - elapsed))
+
+        sleep_time = max(
+            1,
+            5 - elapsed
+        )
+
+        time.sleep(sleep_time)
+
+    log("INFO | Bot Stopped")
 
 
-    log("INFO | Bot stopped")
-
-
-# =========================
+# =====================================
 # ENTRY
-# =========================
+# =====================================
+
 if __name__ == "__main__":
     main()
