@@ -5,7 +5,7 @@ import joblib
 import os
 
 from core.logger import log
-from core.feature_engine_live import FeatureTransformerLive
+from feature_engine import FeatureTransformer
 
 
 # =====================================================
@@ -18,7 +18,7 @@ class Predictor:
         self.model_path = model_path
         self.models = None
 
-        self.feature_engine = FeatureTransformerLive()
+        self.feature_engine = FeatureTransformer()
         self.feature_list = self.feature_engine.get_feature_list()
 
         self._load_model()

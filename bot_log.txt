@@ -1,9 +1,0 @@
-2026-06-15 14:44:55.060655 | INFO | INFO | CSV Data Feed initialized
-2026-06-15 14:44:55.226493 | INFO | INFO | Starting Trade AI
-2026-06-15 14:44:57.285572 | INFO | INFO | Predictor model loaded
-2026-06-15 14:44:57.398009 | INFO | INFO | Predictor model loaded
-2026-06-15 14:44:57.514250 | INFO | INFO | Predictor model loaded
-2026-06-15 14:44:57.626424 | INFO | INFO | Predictor model loaded
-2026-06-15 14:44:57.627170 | INFO | INFO | Executor initialized
-2026-06-15 14:44:57.627588 | INFO | INFO | Core Engine initialized
-2026-06-15 14:44:57.628019 | INFO | INFO | Systems Ready

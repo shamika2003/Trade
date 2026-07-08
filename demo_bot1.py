@@ -20,7 +20,7 @@ from config_core import (
 from core.data_fetcher_online import initialize_mt5, get_mtf_data
 from core.predictor import Predictor
 from core.executor import BrainExecutor
-from core.feature_engine_live import FeatureTransformerLive
+from test.feature_engine_live import FeatureTransformerLive
 from core.trade_manager import TradeManager
 from core.logger import log
 

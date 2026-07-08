@@ -130,6 +130,7 @@ class FeatureTransformerLive:
 
     def build_multi_timeframe_features(self, df_m5, df_h1):
 
+
         df_m5 = self._technical(df_m5)
         df_h1 = self._technical(df_h1)
 
@@ -183,3 +184,4 @@ class FeatureTransformerLive:
         df.dropna(inplace=True)
 
         return df
+    

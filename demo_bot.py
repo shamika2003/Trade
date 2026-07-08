@@ -19,8 +19,8 @@ from core.data_fetcher_online import (
 from core.data_fetcher_offline import CSVDataFeed
 csv_feed = CSVDataFeed()
 
-from core.feature_engine_live import (
-    FeatureTransformerLive
+from feature_engine import (
+    FeatureTransformer
 )
 
 from core.core_engine import (
@@ -64,7 +64,7 @@ def main():
 
     # initialize_mt5()           # Online mode 
 
-    transformer = FeatureTransformerLive()
+    transformer = FeatureTransformer()
 
     core = CoreEngine()
 
