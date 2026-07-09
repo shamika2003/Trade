@@ -202,7 +202,7 @@ class CoreEngine:
 
             log(
                 f"INFO | {symbol} SIGNAL "
-                f"→ {signal} "
+                f"-> {signal} "
                 f"| conf={confidence:.2f}"
             )
 
@@ -222,7 +222,7 @@ class CoreEngine:
             if success:
 
                 log(
-                    f"INFO | TRADE OPENED → {symbol}"
+                    f"INFO | TRADE OPENED -> {symbol}"
                 )
 
 
