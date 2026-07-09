@@ -13,141 +13,90 @@ class FeatureTransformer:
     def get_feature_list(self):
 
         return [
-
             "return",
             "range",
-
             "ma5",
             "ma20",
             "trend",
-
             "tick_volume",
             "spread",
-
             "rsi",
             "atr",
-
             "momentum_3",
             "momentum_10",
-
             "volatility",
             "range_position",
-
             "volume_change",
             "atr_ratio",
-
             "trend_strength",
 
-            # H1
             "h1_ma20",
             "h1_rsi",
             "h1_trend_strength",
             "h1_trend_bias",
-
-            # structure
             "m5_h1_alignment",
             "structure_bias",
-
-            # regime
             "volatility_regime",
             "price_zscore",
             "volatility_change",
-
-            # breakout
             "dist_to_high_50",
             "dist_to_low_50",
-
-            # time
             "hour_sin",
             "hour_cos"
         ]
 
-
     # =====================================================
     # TECHNICAL FEATURE ENGINE
     # =====================================================
-
     def _technical(self, df):
 
         df = df.copy()
-
         eps = 1e-9
-
-
         price = df["close"].replace(0,np.nan)
-
 
         # -----------------------------
         # Returns
         # -----------------------------
-
         df["return"] = np.log(
             price / price.shift(1)
         )
-
 
         # -----------------------------
         # Candle Range
         # -----------------------------
 
-        df["range"] = (
-            df["high"] - df["low"]
-        ) / (price + eps)
-
-
+        df["range"] = (df["high"] - df["low"]) / (price + eps)
 
         # -----------------------------
         # RSI
         # -----------------------------
-
         delta = price.diff()
-
         gain = delta.clip(lower=0)
-
         loss = -delta.clip(upper=0)
 
+        avg_gain = gain.ewm(span=14, adjust=False).mean()
 
-        avg_gain = gain.ewm(
-            span=14,
-            adjust=False
-        ).mean()
-
-        avg_loss = loss.ewm(
-            span=14,
-            adjust=False
-        ).mean()
-
+        avg_loss = loss.ewm(span=14, adjust=False).mean()
 
         rs = avg_gain / (avg_loss + eps)
 
-        df["rsi"] = (
-            100 -
-            (100/(1+rs))
-        )
-
-
+        df["rsi"] = (100 - (100/(1+rs)))
 
         # -----------------------------
         # ATR
         # -----------------------------
-
-        tr = pd.concat(
-
-            [
-
+        tr = pd.concat([
                 df["high"]-df["low"],
-
                 abs(
                     df["high"]
                     -
                     price.shift()
                 ),
-
                 abs(
                     df["low"]
                     -
                     price.shift()
-                )
+               )
 
             ],
 
@@ -601,19 +550,19 @@ class FeatureTransformer:
     # FINAL CLEAN
     # =====================================================
 
-    def _final_clean(self,df):
+    def _final_clean(self, df):
+
+        # remove duplicated columns
+        df = df.loc[:, ~df.columns.duplicated()]
+
 
         df.replace(
-
             [
                 np.inf,
                 -np.inf
             ],
-
             np.nan,
-
             inplace=True
-
         )
 
 

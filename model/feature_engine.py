@@ -601,19 +601,19 @@ class FeatureTransformer:
     # FINAL CLEAN
     # =====================================================
 
-    def _final_clean(self,df):
+    def _final_clean(self, df):
+
+        # remove duplicated columns
+        df = df.loc[:, ~df.columns.duplicated()]
+
 
         df.replace(
-
             [
                 np.inf,
                 -np.inf
             ],
-
             np.nan,
-
             inplace=True
-
         )
 
 
