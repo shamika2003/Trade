@@ -449,26 +449,6 @@ def main():
                     )
 
 
-
-                    # =================================
-                    # UPDATE POSITION
-                    # =================================
-
-
-                    if executor.has_open_trade(symbol):
-
-
-                        executor.update_price(
-
-                            symbol=symbol,
-
-                            price=float(df_m5["close"].iloc[-1]),
-
-                            candle_time=candle_time
-
-                        )
-
-
                 except Exception as e:
 
                     log(

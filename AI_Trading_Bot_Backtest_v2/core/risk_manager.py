@@ -1,5 +1,3 @@
-# filename: risk_manager.py
-
 import time
 
 from core.logger import log
@@ -8,24 +6,16 @@ from core.logger import log
 # =====================================================
 # RISK MANAGER
 # =====================================================
-class RiskManager:
-    """
-    Central gatekeeper for trading decisions.
 
-    Responsibilities:
-    - Prevent overtrading
-    - Lock symbols when trade is active
-    - Enforce cooldown
-    - Control global + per-symbol exposure
-    """
+class RiskManager:
 
 
     def __init__(
-        self,
-        executor,
-        max_open_trades=2,
-        max_total_trades=5,
-        cooldown_seconds=300
+            self,
+            executor,
+            max_open_trades=2,
+            max_total_trades=5,
+            cooldown_seconds=300
     ):
 
         self.executor = executor
@@ -35,8 +25,6 @@ class RiskManager:
         self.cooldown_seconds = cooldown_seconds
 
 
-        # symbol-level state
-
         self.last_trade_time = {}
 
         self.locked_symbols = set()
@@ -45,7 +33,6 @@ class RiskManager:
 
     # =================================================
     # POSITION CHECKS
-    # DELEGATED TO EXECUTOR
     # =================================================
 
     def get_symbol_positions(self, symbol):
@@ -57,13 +44,10 @@ class RiskManager:
                 "get_symbol_positions"
             ):
 
-                return (
-                    self.executor
-                    .get_symbol_positions(symbol)
-                )
+                return self.executor.get_symbol_positions(symbol)
 
 
-            elif self.executor.has_open_trade(symbol):
+            if self.executor.has_open_trade(symbol):
 
                 return [True]
 
@@ -74,10 +58,11 @@ class RiskManager:
         except Exception as e:
 
             log(
-                f"ERROR | Symbol position check failed: {e}"
+                f"ERROR | Symbol position check failed {e}"
             )
 
             return []
+
 
 
 
@@ -90,10 +75,7 @@ class RiskManager:
                 "get_all_positions"
             ):
 
-                return (
-                    self.executor
-                    .get_all_positions()
-                )
+                return self.executor.get_all_positions()
 
 
             return []
@@ -102,34 +84,59 @@ class RiskManager:
         except Exception as e:
 
             log(
-                f"ERROR | Total position check failed: {e}"
+                f"ERROR | Total position check failed {e}"
             )
 
             return []
 
 
 
+
     # =================================================
-    # MAIN ENTRY CHECK
+    # TIME HANDLER
     # =================================================
 
-    def can_trade(self, symbol):
-        """
-        Returns True if new trade is allowed.
-        """
+    def _get_time(self, candle_time=None):
+
+        if candle_time is not None:
+
+            try:
+
+                return candle_time.timestamp()
+
+            except:
+
+                pass
 
 
-        # -----------------------------
-        # COOLDOWN CHECK
-        # -----------------------------
+        return time.time()
 
-        now = time.time()
 
-        last_time = (
-            self.last_trade_time
-            .get(symbol, 0)
+
+    # =================================================
+    # ENTRY CHECK
+    # =================================================
+
+    def can_trade(
+            self,
+            symbol,
+            candle_time=None
+    ):
+
+
+        now = self._get_time(
+            candle_time
         )
 
+
+        last_time = self.last_trade_time.get(
+            symbol,
+            0
+        )
+
+
+
+        # cooldown
 
         if (
             now - last_time
@@ -141,9 +148,7 @@ class RiskManager:
 
 
 
-        # -----------------------------
-        # SYMBOL LOCK CHECK
-        # -----------------------------
+        # active lock
 
         if symbol in self.locked_symbols:
 
@@ -151,31 +156,25 @@ class RiskManager:
 
 
 
-        # -----------------------------
-        # ACTIVE POSITION CHECK
-        # -----------------------------
+        # existing position
 
-        symbol_positions = (
-            self.get_symbol_positions(symbol)
+        positions = self.get_symbol_positions(
+            symbol
         )
 
 
-        if len(symbol_positions) >= 1:
+        if len(positions) >= 1:
 
             return False
 
 
 
-        # -----------------------------
-        # GLOBAL POSITION LIMIT
-        # -----------------------------
+        # total positions
 
-        all_positions = (
-            self.get_all_positions()
-        )
+        total = self.get_all_positions()
 
 
-        if len(all_positions) >= self.max_total_trades:
+        if len(total) >= self.max_total_trades:
 
             return False
 
@@ -185,15 +184,22 @@ class RiskManager:
 
 
 
+
     # =================================================
-    # REGISTER TRADE OPEN
+    # OPEN REGISTER
     # =================================================
 
-    def register_trade_open(self, symbol):
+    def register_trade_open(
+            self,
+            symbol,
+            candle_time=None
+    ):
+
 
         self.last_trade_time[symbol] = (
-            time.time()
+            self._get_time(candle_time)
         )
+
 
         self.locked_symbols.add(
             symbol
@@ -201,11 +207,18 @@ class RiskManager:
 
 
 
+
+
     # =================================================
-    # REGISTER TRADE CLOSE
+    # CLOSE REGISTER
     # =================================================
 
-    def register_trade_close(self, symbol):
+    def register_trade_close(
+            self,
+            symbol,
+            candle_time=None
+    ):
+
 
         self.locked_symbols.discard(
             symbol
@@ -213,8 +226,10 @@ class RiskManager:
 
 
         self.last_trade_time[symbol] = (
-            time.time()
+            self._get_time(candle_time)
         )
+
+
 
 
 

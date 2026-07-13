@@ -1,5 +1,3 @@
-# filename: core_engine.py
-
 from core.predictor import Predictor
 from core.signal_engine import decide_signal
 from core.risk_manager import RiskManager
@@ -36,10 +34,6 @@ class CoreEngine:
 
 
 
-        # -----------------------------------------
-        # RISK MANAGER
-        # -----------------------------------------
-
         self.risk = RiskManager(
 
             executor=self.executor,
@@ -53,10 +47,6 @@ class CoreEngine:
         )
 
 
-
-        # -----------------------------------------
-        # LOAD MODELS
-        # -----------------------------------------
 
         self.predictors = {
 
@@ -81,16 +71,14 @@ class CoreEngine:
 
 
 
-
     # =====================================================
-    # RESET SIGNAL STATE
+    # RESET SIGNAL
     # =====================================================
 
     def reset_signal(
             self,
             symbol
     ):
-
 
         self.last_signal.pop(
             symbol,
@@ -123,9 +111,9 @@ class CoreEngine:
 
 
 
-            # -----------------------------------------
-            # CURRENT MARKET DATA
-            # -----------------------------------------
+            # =========================================
+            # CURRENT PRICE
+            # =========================================
 
             current_price = float(
 
@@ -135,30 +123,24 @@ class CoreEngine:
 
 
 
-            # -----------------------------------------
-            # CANDLE TIME
-            # -----------------------------------------
+
+
+            # =========================================
+            # FALLBACK TIME
+            # =========================================
 
             if candle_time is None:
 
 
-                if candle is not None and "time" in candle:
-
-
-                    candle_time = candle["time"]
-
-
-
-                elif "time" in df.columns:
-
+                if "time" in df.columns:
 
                     candle_time = df["time"].iloc[-1]
 
 
 
-            # -----------------------------------------
+            # =========================================
             # MANAGE EXISTING POSITION
-            # -----------------------------------------
+            # =========================================
 
             if self.executor.has_open_trade(symbol):
 
@@ -180,6 +162,7 @@ class CoreEngine:
                     )
 
 
+
                     if closed:
 
 
@@ -190,7 +173,9 @@ class CoreEngine:
 
                         self.risk.register_trade_close(
 
-                            symbol
+                            symbol,
+
+                            candle_time
 
                         )
 
@@ -208,9 +193,10 @@ class CoreEngine:
 
 
 
-            # -----------------------------------------
+
+            # =========================================
             # AI PREDICTION
-            # -----------------------------------------
+            # =========================================
 
             predictor = self.predictors.get(symbol)
 
@@ -225,8 +211,8 @@ class CoreEngine:
 
                 )
 
-
                 return
+
 
 
 
@@ -281,12 +267,11 @@ class CoreEngine:
 
 
 
-            # -----------------------------------------
-            # SIGNAL FILTER
-            # -----------------------------------------
+            # =========================================
+            # SIGNAL THRESHOLD
+            # =========================================
 
             if abs(signal_value) < SIGNAL_THRESHOLD:
-
 
                 return
 
@@ -310,12 +295,12 @@ class CoreEngine:
 
 
 
-            # -----------------------------------------
-            # DUPLICATE SIGNAL FILTER
-            # -----------------------------------------
+
+            # =========================================
+            # DUPLICATE SIGNAL
+            # =========================================
 
             if self.last_signal.get(symbol) == signal:
-
 
                 return
 
@@ -323,11 +308,17 @@ class CoreEngine:
 
 
 
-            # -----------------------------------------
+            # =========================================
             # RISK CHECK
-            # -----------------------------------------
+            # =========================================
 
-            if not self.risk.can_trade(symbol):
+            if not self.risk.can_trade(
+
+                symbol,
+
+                candle_time
+
+            ):
 
 
                 log(
@@ -336,16 +327,15 @@ class CoreEngine:
 
                 )
 
-
                 return
 
 
 
 
 
-            # -----------------------------------------
-            # EXECUTION
-            # -----------------------------------------
+            # =========================================
+            # OPEN TRADE
+            # =========================================
 
             success = False
 
@@ -373,6 +363,8 @@ class CoreEngine:
             except TypeError:
 
 
+                # MT5 executor compatibility
+
                 success = self.executor.open_trade(
 
                     symbol=symbol,
@@ -387,6 +379,8 @@ class CoreEngine:
 
 
 
+
+
             if success:
 
 
@@ -396,7 +390,9 @@ class CoreEngine:
 
                 self.risk.register_trade_open(
 
-                    symbol
+                    symbol,
+
+                    candle_time
 
                 )
 
@@ -417,6 +413,7 @@ class CoreEngine:
                     symbol
 
                 )
+
 
 
 
