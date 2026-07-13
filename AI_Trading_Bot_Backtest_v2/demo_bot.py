@@ -1,0 +1,670 @@
+# filename: demo_bot.py
+
+import time
+import signal
+
+
+from config_core import (
+
+    SYMBOLS,
+    DATA_PATH,
+
+    USE_OFFLINE,
+
+    DEFAULT_CAPITAL,
+
+    HISTORY_SIZE,
+
+    BACKTEST_DELAY,
+
+    LIVE_INTERVAL
+
+)
+
+
+
+from core.logger import log
+
+from core.feature_engine import FeatureTransformer
+
+from core.core_engine import CoreEngine
+
+
+
+# =====================================================
+# CONDITIONAL IMPORTS
+# =====================================================
+
+if USE_OFFLINE:
+
+    from core.paper_executor import PaperExecutor
+
+    from core.replay_engine import ReplayEngine
+
+    from core.performance import PerformanceAnalyzer
+
+
+else:
+
+    from core.executor import BrainExecutor
+
+    from core.data_fetcher_online import (
+        initialize_mt5,
+        get_mtf_data
+    )
+
+
+
+
+
+# =====================================================
+# GLOBAL CONTROL
+# =====================================================
+
+running = True
+
+
+
+
+def stop_bot(sig, frame):
+
+    global running
+
+    running = False
+
+    log(
+        "INFO | Shutdown requested"
+    )
+
+
+
+
+signal.signal(
+    signal.SIGINT,
+    stop_bot
+)
+
+
+signal.signal(
+    signal.SIGTERM,
+    stop_bot
+)
+
+
+
+
+
+# =====================================================
+# CREATE H1 FROM M5
+# =====================================================
+
+def create_h1(df):
+
+
+    try:
+
+
+        h1 = (
+
+            df
+
+            .set_index(
+                "time"
+            )
+
+            .resample(
+                "1h"
+            )
+
+            .agg(
+
+                {
+
+                    "open":
+                    "first",
+
+
+                    "high":
+                    "max",
+
+
+                    "low":
+                    "min",
+
+
+                    "close":
+                    "last",
+
+
+                    "tick_volume":
+                    "sum",
+
+
+                    "spread":
+                    "mean",
+
+
+                    "real_volume":
+                    "sum"
+
+                }
+
+            )
+
+            .dropna()
+
+            .reset_index()
+
+        )
+
+
+        return h1
+
+
+
+    except Exception as e:
+
+
+        log(
+            f"ERROR | H1 creation failed {e}"
+        )
+
+
+        return None
+
+
+
+
+
+
+
+# =====================================================
+# MAIN
+# =====================================================
+
+def main():
+
+
+    log(
+        "INFO | Starting Trade AI"
+    )
+
+
+
+
+
+    # =================================================
+    # EXECUTOR
+    # =================================================
+
+    if USE_OFFLINE:
+
+
+
+        executor = PaperExecutor(
+
+            capital=DEFAULT_CAPITAL
+
+        )
+
+
+
+        log(
+            "INFO | PAPER EXECUTOR ENABLED"
+        )
+
+
+
+    else:
+
+
+
+        if not initialize_mt5():
+
+
+            log(
+                "ERROR | MT5 initialization failed"
+            )
+
+            return
+
+
+
+
+        executor = BrainExecutor(
+
+            capital=DEFAULT_CAPITAL
+
+        )
+
+
+
+        log(
+            "INFO | MT5 EXECUTOR ENABLED"
+        )
+
+
+
+
+
+
+
+    # =================================================
+    # AI ENGINE
+    # =================================================
+
+    core = CoreEngine(
+
+        executor=executor
+
+    )
+
+
+
+    transformer = FeatureTransformer()
+
+
+
+
+
+
+
+
+    # =================================================
+    # DATA ENGINE
+    # =================================================
+
+
+    if USE_OFFLINE:
+
+
+
+        replay = ReplayEngine(
+
+            file_path=DATA_PATH,
+
+            symbols=SYMBOLS,
+
+            history_size=HISTORY_SIZE
+
+        )
+
+
+        log(
+            "INFO | CSV BACKTEST MODE"
+        )
+
+
+
+    else:
+
+
+        replay = None
+
+
+        log(
+            "INFO | LIVE MT5 MODE"
+        )
+
+
+
+
+
+
+
+    log(
+        "INFO | Systems Ready"
+    )
+
+
+
+
+
+
+
+
+    # =================================================
+    # BACKTEST LOOP
+    # =================================================
+
+    if USE_OFFLINE:
+
+
+
+        while running:
+
+
+
+            market = replay.next_market_snapshot()
+
+
+
+            if market is None:
+
+                break
+
+
+
+
+
+            # real replay candle time
+
+            replay_time = replay.get_current_time()
+
+
+
+
+
+            for symbol, df_m5 in market.items():
+
+
+
+                try:
+
+
+
+                    if df_m5 is None:
+
+                        continue
+
+
+
+
+                    if len(df_m5) < HISTORY_SIZE:
+
+                        continue
+
+
+
+
+
+
+                    df_h1 = create_h1(
+
+                        df_m5
+
+                    )
+
+
+
+                    if df_h1 is None:
+
+                        continue
+
+
+
+
+
+                    df_h1["symbol"] = symbol
+
+
+
+
+
+
+
+                    df = transformer.build_multi_timeframe_features(
+
+                        df_m5,
+
+                        df_h1
+
+                    )
+
+
+
+
+
+                    if df is None or df.empty:
+
+                        continue
+
+
+
+
+
+
+                    # =================================
+                    # GET REAL REPLAY CANDLE
+                    # =================================
+
+
+                    candle_time = replay_time
+
+
+
+                    # =================================
+                    # AI ENGINE
+                    # =================================
+
+
+                    core.process(
+
+                        symbol,
+
+                        df,
+
+                        candle_time=candle_time
+
+                    )
+
+
+
+                    # =================================
+                    # UPDATE POSITION
+                    # =================================
+
+
+                    if executor.has_open_trade(symbol):
+
+
+                        executor.update_price(
+
+                            symbol=symbol,
+
+                            price=float(df_m5["close"].iloc[-1]),
+
+                            candle_time=candle_time
+
+                        )
+
+
+                except Exception as e:
+
+                    log(
+
+                        f"ERROR | {symbol}: {e}"
+
+                    )
+
+
+
+
+
+
+
+
+            time.sleep(
+
+                BACKTEST_DELAY
+
+            )
+
+
+
+
+
+
+
+
+
+    # =================================================
+    # LIVE LOOP
+    # =================================================
+
+    else:
+
+
+
+        while running:
+
+
+
+            for symbol in SYMBOLS:
+
+
+
+                try:
+
+
+
+                    df_m5, df_h1 = get_mtf_data(
+
+                        symbol
+
+                    )
+
+
+
+                    if (
+
+                        df_m5 is None
+
+                        or
+
+                        df_h1 is None
+
+                    ):
+
+                        continue
+
+
+
+
+
+
+                    df = transformer.build_multi_timeframe_features(
+
+                        df_m5,
+
+                        df_h1
+
+                    )
+
+
+
+
+
+                    if df is None or df.empty:
+
+                        continue
+
+
+
+
+
+
+
+                    # LIVE uses MT5 candle time
+
+
+                    core.process(
+
+                        symbol,
+
+                        df,
+
+                        candle_time=df["time"].iloc[-1],
+
+                        candle=None
+
+                    )
+
+
+
+
+
+
+                except Exception as e:
+
+
+
+                    log(
+
+                        f"ERROR | {symbol}: {e}"
+
+                    )
+
+
+
+
+
+
+
+            time.sleep(
+
+                LIVE_INTERVAL
+
+            )
+
+
+
+
+
+
+
+
+
+    # =================================================
+    # REPORT
+    # =================================================
+
+
+    if USE_OFFLINE:
+
+
+
+        log(
+            "INFO | Replay completed"
+        )
+
+
+
+
+        analyzer = PerformanceAnalyzer(
+
+            initial_balance=DEFAULT_CAPITAL
+
+        )
+
+
+
+        analyzer.analyze(
+
+            executor.trade_history
+
+        )
+
+
+
+
+        log(
+            "INFO | Backtest report completed"
+        )
+
+
+
+
+    log(
+        "INFO | Bot stopped"
+    )
+
+
+# =====================================================
+# START
+# =====================================================
+
+if __name__ == "__main__":
+
+
+    main()

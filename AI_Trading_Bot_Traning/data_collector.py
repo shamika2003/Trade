@@ -126,6 +126,8 @@ class MarketDataCollector:
         print("🕒 Converting timestamps...")
 
         df["time"] = pd.to_datetime(df["time"], unit="s")
+        
+        df["candle_time"] = df["time"]
 
         print("📊 Sorting market data...")
 

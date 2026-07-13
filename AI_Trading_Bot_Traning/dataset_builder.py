@@ -109,6 +109,8 @@ def build_dataset():
             direction="backward"
         )
 
+        df["candle_time"] = df["time"]
+
         print("✔ Multi-timeframe merge completed")
 
         # ======================
