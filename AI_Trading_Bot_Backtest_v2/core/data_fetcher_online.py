@@ -49,7 +49,7 @@ def _fetch_rates(symbol, timeframe, n_bars, retry=3):
             rates = mt5.copy_rates_from_pos(
                 symbol,
                 timeframe,
-                0,
+                1,
                 n_bars
             )
 

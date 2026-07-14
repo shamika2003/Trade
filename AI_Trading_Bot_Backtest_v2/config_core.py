@@ -103,6 +103,7 @@ MODEL_CONFIDENCE_THRESHOLD = 0.60
 
 SIGNAL_THRESHOLD = 0.0005
 
+MIN_CONFIDENCE = 0.70
 
 
 MIN_MODEL_AGREEMENT = 0.60
@@ -185,6 +186,9 @@ STOP_LOSS_PIPS = 10
 TAKE_PROFIT_PIPS = 20
 
 
+ATR_SL_MULTIPLIER = 2.0
+ATR_TP_MULTIPLIER = 3.0
+
 
 # compatibility aliases
 # (old executor code)
@@ -258,3 +262,20 @@ TRADE_LOG_FILE = "logs/trades.csv"
 # =====================================================
 
 DEBUG = True
+
+
+# =====================================================
+# BACKTEST DATE RANGE
+# =====================================================
+
+BACKTEST_START_DATE = "2024-01-01"
+
+BACKTEST_END_DATE = "2024-12-31"
+
+
+
+# =====================================================
+# COMMAND REPORT CONTROL
+# =====================================================
+
+AUTO_REPORT = False

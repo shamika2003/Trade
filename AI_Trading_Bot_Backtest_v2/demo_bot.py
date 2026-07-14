@@ -22,12 +22,13 @@ from config_core import (
 )
 
 
-
 from core.logger import log
 
 from core.feature_engine import FeatureTransformer
 
 from core.core_engine import CoreEngine
+
+from core.command_control import CommandControl
 
 
 
@@ -55,14 +56,11 @@ else:
 
 
 
-
-
 # =====================================================
 # GLOBAL CONTROL
 # =====================================================
 
 running = True
-
 
 
 
@@ -75,7 +73,6 @@ def stop_bot(sig, frame):
     log(
         "INFO | Shutdown requested"
     )
-
 
 
 
@@ -100,9 +97,7 @@ signal.signal(
 
 def create_h1(df):
 
-
     try:
-
 
         h1 = (
 
@@ -117,38 +112,30 @@ def create_h1(df):
             )
 
             .agg(
-
                 {
 
                     "open":
                     "first",
 
-
                     "high":
                     "max",
-
 
                     "low":
                     "min",
 
-
                     "close":
                     "last",
-
 
                     "tick_volume":
                     "sum",
 
-
                     "spread":
                     "mean",
-
 
                     "real_volume":
                     "sum"
 
                 }
-
             )
 
             .dropna()
@@ -159,7 +146,6 @@ def create_h1(df):
 
 
         return h1
-
 
 
     except Exception as e:
@@ -176,20 +162,57 @@ def create_h1(df):
 
 
 
+# =====================================================
+# REPORT FUNCTION
+# =====================================================
+
+def create_report(executor):
 
 
+    if not USE_OFFLINE:
+
+
+        log(
+            "INFO | Reports available only in CSV mode"
+        )
+
+        return
+
+
+
+    log(
+        "INFO | Creating backtest report"
+    )
+
+
+    analyzer = PerformanceAnalyzer(
+
+        initial_balance=DEFAULT_CAPITAL
+
+    )
+
+
+    analyzer.analyze(
+
+        executor.trade_history
+
+    )
+
+    log(
+        "INFO | Report completed"
+    )
 # =====================================================
 # MAIN
 # =====================================================
 
 def main():
 
+    global running
+
 
     log(
         "INFO | Starting Trade AI"
     )
-
-
 
 
 
@@ -200,7 +223,6 @@ def main():
     if USE_OFFLINE:
 
 
-
         executor = PaperExecutor(
 
             capital=DEFAULT_CAPITAL
@@ -208,15 +230,12 @@ def main():
         )
 
 
-
         log(
             "INFO | PAPER EXECUTOR ENABLED"
         )
 
 
-
     else:
-
 
 
         if not initialize_mt5():
@@ -230,13 +249,11 @@ def main():
 
 
 
-
         executor = BrainExecutor(
 
             capital=DEFAULT_CAPITAL
 
         )
-
 
 
         log(
@@ -247,10 +264,8 @@ def main():
 
 
 
-
-
     # =================================================
-    # AI ENGINE
+    # CORE ENGINE
     # =================================================
 
     core = CoreEngine(
@@ -267,16 +282,11 @@ def main():
 
 
 
-
-
-
     # =================================================
     # DATA ENGINE
     # =================================================
 
-
     if USE_OFFLINE:
-
 
 
         replay = ReplayEngine(
@@ -310,8 +320,6 @@ def main():
 
 
 
-
-
     log(
         "INFO | Systems Ready"
     )
@@ -320,20 +328,58 @@ def main():
 
 
 
-
-
-
     # =================================================
-    # BACKTEST LOOP
+    # COMMAND CONTROL
     # =================================================
+
+    controller = CommandControl()
+
+
+    controller.start()
+
+
+    log(
+        "INFO | Commands: stop / pause / resume / report / status / exit"
+    )
+
+
+    # =====================================================
+    # CSV BACKTEST LOOP
+    # =====================================================
 
     if USE_OFFLINE:
 
 
+        while running and controller.running:
 
-        while running:
+
+            # -----------------------------
+            # COMMAND HANDLING
+            # -----------------------------
+
+            if controller.report_requested:
+
+                controller.report_requested = False
+
+                create_report(
+                    executor
+                )
 
 
+
+            if controller.paused:
+
+                time.sleep(1)
+
+                continue
+
+
+
+
+
+            # -----------------------------
+            # GET MARKET SNAPSHOT
+            # -----------------------------
 
             market = replay.next_market_snapshot()
 
@@ -341,13 +387,38 @@ def main():
 
             if market is None:
 
+
+                log(
+                    "INFO | CSV completed. Waiting for command"
+                )
+
+
+                while running and controller.running:
+
+
+                    time.sleep(1)
+
+
+                    if controller.report_requested:
+
+                        controller.report_requested = False
+
+                        create_report(
+                            executor
+                        )
+
+
+                    if controller.paused:
+
+                        continue
+
+
+
                 break
 
 
 
 
-
-            # real replay candle time
 
             replay_time = replay.get_current_time()
 
@@ -355,18 +426,19 @@ def main():
 
 
 
-            for symbol, df_m5 in market.items():
+            # -----------------------------
+            # PROCESS SYMBOLS
+            # -----------------------------
 
+            for symbol, df_m5 in market.items():
 
 
                 try:
 
 
-
                     if df_m5 is None:
 
                         continue
-
 
 
 
@@ -378,13 +450,9 @@ def main():
 
 
 
-
                     df_h1 = create_h1(
-
                         df_m5
-
                     )
-
 
 
                     if df_h1 is None:
@@ -393,11 +461,7 @@ def main():
 
 
 
-
-
                     df_h1["symbol"] = symbol
-
-
 
 
 
@@ -413,8 +477,6 @@ def main():
 
 
 
-
-
                     if df is None or df.empty:
 
                         continue
@@ -423,70 +485,64 @@ def main():
 
 
 
-
-                    # =================================
-                    # GET REAL REPLAY CANDLE
-                    # =================================
-
-
-                    candle_time = replay_time
-
-
-
-                    # =================================
-                    # AI ENGINE
-                    # =================================
-
-
                     core.process(
 
                         symbol,
 
                         df,
 
-                        candle_time=candle_time
+                        candle_time=replay_time
 
                     )
+
+
 
 
                 except Exception as e:
 
+
                     log(
-
                         f"ERROR | {symbol}: {e}"
-
                     )
-
-
-
 
 
 
 
 
             time.sleep(
-
                 BACKTEST_DELAY
-
             )
 
 
 
 
-    # =================================================
+
+
+
+    # =====================================================
     # LIVE LOOP
-    # =================================================
+    # =====================================================
 
     else:
 
 
+        while running and controller.running:
 
-        while running:
+
+
+            # -----------------------------
+            # COMMAND HANDLING
+            # -----------------------------
+
+            if controller.paused:
+
+                time.sleep(1)
+
+                continue
 
 
 
             for symbol in SYMBOLS:
-
 
 
                 try:
@@ -517,7 +573,6 @@ def main():
 
 
 
-
                     df = transformer.build_multi_timeframe_features(
 
                         df_m5,
@@ -528,20 +583,9 @@ def main():
 
 
 
-
-
                     if df is None or df.empty:
 
                         continue
-
-
-
-
-
-
-
-                    # LIVE uses MT5 candle time
-
 
                     core.process(
 
@@ -549,12 +593,9 @@ def main():
 
                         df,
 
-                        candle_time=df["time"].iloc[-1],
-
-                        candle=None
+                        candle_time=df["time"].iloc[-1]
 
                     )
-
 
 
 
@@ -563,76 +604,26 @@ def main():
                 except Exception as e:
 
 
-
                     log(
-
                         f"ERROR | {symbol}: {e}"
-
                     )
 
 
-
-
-
-
-
             time.sleep(
-
                 LIVE_INTERVAL
-
             )
 
-
-
-
-
-
-
-
-
-    # =================================================
-    # REPORT
-    # =================================================
-
-
-    if USE_OFFLINE:
-
-
-
-        log(
-            "INFO | Replay completed"
-        )
-
-
-
-
-        analyzer = PerformanceAnalyzer(
-
-            initial_balance=DEFAULT_CAPITAL
-
-        )
-
-
-
-        analyzer.analyze(
-
-            executor.trade_history
-
-        )
-
-
-
-
-        log(
-            "INFO | Backtest report completed"
-        )
-
-
-
+    # =====================================================
+    # SHUTDOWN
+    # =====================================================
 
     log(
         "INFO | Bot stopped"
     )
+
+
+
+
 
 
 # =====================================================
@@ -640,6 +631,5 @@ def main():
 # =====================================================
 
 if __name__ == "__main__":
-
 
     main()

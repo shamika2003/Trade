@@ -8,6 +8,7 @@ from config_core import (
     SYMBOLS,
     SIGNAL_THRESHOLD,
     MAX_OPEN_TRADES,
+    MIN_CONFIDENCE,
     MAX_TOTAL_TRADES,
     COOLDOWN_SECONDS
 )
@@ -121,6 +122,14 @@ class CoreEngine:
 
             )
 
+
+            # =========================================
+            # CURRENT ATR
+            # =========================================
+
+            current_atr = float(
+                df["atr"].iloc[-1]
+            )
 
 
 
@@ -250,6 +259,14 @@ class CoreEngine:
 
             )
 
+            if confidence < MIN_CONFIDENCE:
+
+                log(
+                    f"DEBUG | {symbol} confidence too low "
+                    f"{confidence:.2f}"
+                )
+
+                return
 
 
 
@@ -354,6 +371,8 @@ class CoreEngine:
 
                     lot=0.01,
 
+                    atr=current_atr,
+
                     candle_time=candle_time
 
                 )
@@ -371,7 +390,11 @@ class CoreEngine:
 
                     direction=signal,
 
-                    lot=0.01
+                    price=current_price,
+
+                    lot=0.01,
+                    
+                    atr=current_atr 
 
                 )
 

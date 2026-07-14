@@ -9,16 +9,11 @@ from core.logger import log
 from config_core import (
 
     SYMBOLS,
-
-    STOP_LOSS_PIPS,
-
-    TAKE_PROFIT_PIPS,
-
     TRADE_LOT,
-
     MT5_MAGIC,
-
-    DEVIATION
+    DEVIATION,
+    ATR_SL_MULTIPLIER,
+    ATR_TP_MULTIPLIER
 
 )
 
@@ -271,17 +266,14 @@ class BrainExecutor:
     # OPEN TRADE
     # =====================================================
 
-
     def open_trade(
-
             self,
-
             symbol,
-
             direction,
-
-            lot=None
-
+            price=None,
+            lot=None,
+            atr=None,
+            candle_time=None
     ):
 
 
@@ -346,7 +338,18 @@ class BrainExecutor:
 
 
 
-            pip = self.pip_size(symbol)
+            if atr is None:
+
+                log(
+                    f"ERROR | ATR missing {symbol}"
+                )
+
+                return False
+
+
+            sl_distance = atr * ATR_SL_MULTIPLIER
+
+            tp_distance = atr * ATR_TP_MULTIPLIER
 
 
 
@@ -369,27 +372,9 @@ class BrainExecutor:
 
 
 
-                sl = (
+                sl = price - sl_distance
 
-                    price
-
-                    -
-
-                    STOP_LOSS_PIPS * pip
-
-                )
-
-
-
-                tp = (
-
-                    price
-
-                    +
-
-                    TAKE_PROFIT_PIPS * pip
-
-                )
+                tp = price + tp_distance
 
 
 
@@ -411,27 +396,9 @@ class BrainExecutor:
 
 
 
-                sl = (
+                sl = price + sl_distance
 
-                    price
-
-                    +
-
-                    STOP_LOSS_PIPS * pip
-
-                )
-
-
-
-                tp = (
-
-                    price
-
-                    -
-
-                    TAKE_PROFIT_PIPS * pip
-
-                )
+                tp = price - tp_distance
 
 
 

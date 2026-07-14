@@ -12,20 +12,19 @@ from config_core import (
 
     TRADE_LOT,
 
-    TAKE_PROFIT_PIPS,
-
-    STOP_LOSS_PIPS,
-
     COMMISSION_PER_LOT,
 
-    DEFAULT_SPREAD_PIPS
+    DEFAULT_SPREAD_PIPS,
+
+    ATR_SL_MULTIPLIER,
+
+    ATR_TP_MULTIPLIER
 
 )
 
 
 
 class PaperExecutor:
-
 
 
     def __init__(
@@ -36,37 +35,22 @@ class PaperExecutor:
 
     ):
 
-
-
         self.initial_capital = capital
-
 
         self.balance = capital
 
-
         self.equity = capital
-
-
 
         self.positions = {}
 
-
-
         self.trade_history = []
-
-
 
         self.trade_logger = TradeLogger()
 
 
-
         log(
-
             "INFO | Paper Executor initialized"
-
         )
-
-
 
 
 
@@ -74,73 +58,34 @@ class PaperExecutor:
     # POSITION API
     # =====================================================
 
-
-    def has_open_trade(
-
-            self,
-
-            symbol
-
-    ):
-
+    def has_open_trade(self, symbol):
 
         return symbol in self.positions
 
 
 
-
-
-    def get_position(
-
-            self,
-
-            symbol
-
-    ):
-
+    def get_position(self, symbol):
 
         return self.positions.get(symbol)
 
 
 
-
-
-    def get_symbol_positions(
-
-            self,
-
-            symbol
-
-    ):
-
-
+    def get_symbol_positions(self, symbol):
 
         position = self.get_position(symbol)
 
-
-
         if position:
-
-
             return [position]
-
 
         return []
 
 
 
-
-
     def get_all_positions(self):
 
-
         return list(
-
             self.positions.values()
-
         )
-
-
 
 
 
@@ -149,21 +94,11 @@ class PaperExecutor:
     # PIP SIZE
     # =====================================================
 
-
-    def pip_size(
-
-            self,
-
-            symbol
-
-    ):
-
+    def pip_size(self, symbol):
 
         if "JPY" in symbol:
 
-
             return 0.01
-
 
 
         return 0.0001
@@ -171,11 +106,9 @@ class PaperExecutor:
 
 
 
-
     # =====================================================
     # SLIPPAGE
     # =====================================================
-
 
     def slippage_price(
 
@@ -193,32 +126,19 @@ class PaperExecutor:
         pip = self.pip_size(symbol)
 
 
-
         slippage = (
-
-            0.2
-
-            *
-
-            pip
-
+            0.2 * pip
         )
-
 
 
         if direction == "BUY":
 
-
             return price + slippage
-
 
 
         else:
 
-
             return price - slippage
-
-
 
 
 
@@ -227,7 +147,6 @@ class PaperExecutor:
     # =====================================================
     # OPEN TRADE
     # =====================================================
-
 
     def open_trade(
 
@@ -241,36 +160,39 @@ class PaperExecutor:
 
             lot=TRADE_LOT,
 
+            atr=None,
+
             candle_time=None
 
     ):
 
 
-
         try:
-
 
 
             if symbol not in SYMBOLS:
 
-
                 return False
-
-
 
 
 
             if self.has_open_trade(symbol):
 
+                return False
+
+
+
+            if atr is None:
+
+                log(
+                    f"ERROR | ATR missing {symbol}"
+                )
 
                 return False
 
 
 
-
-
-
-            pip = self.pip_size(symbol)
+            atr = float(atr)
 
 
 
@@ -280,11 +202,9 @@ class PaperExecutor:
 
                 *
 
-                pip
+                self.pip_size(symbol)
 
             )
-
-
 
 
 
@@ -294,25 +214,18 @@ class PaperExecutor:
 
             # spread simulation
 
-
             if direction == "BUY":
-
 
                 entry += spread / 2
 
 
-
             else:
-
 
                 entry -= spread / 2
 
 
 
-
-
             # slippage
-
 
             entry = self.slippage_price(
 
@@ -326,11 +239,51 @@ class PaperExecutor:
 
 
 
+            # ==============================
+            # ATR SL / TP
+            # ==============================
+
+            sl_distance = (
+
+                atr
+
+                *
+
+                ATR_SL_MULTIPLIER
+
+            )
+
+
+            tp_distance = (
+
+                atr
+
+                *
+
+                ATR_TP_MULTIPLIER
+
+            )
+
+
+
+            if direction == "BUY":
+
+                stop_loss = entry - sl_distance
+
+                take_profit = entry + tp_distance
+
+
+            else:
+
+                stop_loss = entry + sl_distance
+
+                take_profit = entry - tp_distance
+
+
 
 
 
             position = {
-
 
 
                 "symbol":
@@ -338,11 +291,9 @@ class PaperExecutor:
                 symbol,
 
 
-
                 "type":
 
                 direction,
-
 
 
                 "volume":
@@ -350,11 +301,9 @@ class PaperExecutor:
                 lot,
 
 
-
                 "entry_price":
 
                 entry,
-
 
 
                 "current_price":
@@ -362,11 +311,19 @@ class PaperExecutor:
                 entry,
 
 
+                "stop_loss":
+
+                stop_loss,
+
+
+                "take_profit":
+
+                take_profit,
+
 
                 "exit_price":
 
                 None,
-
 
 
                 "profit":
@@ -374,11 +331,9 @@ class PaperExecutor:
                 0,
 
 
-
                 "pips":
 
                 0,
-
 
 
                 "commission":
@@ -386,19 +341,13 @@ class PaperExecutor:
                 COMMISSION_PER_LOT * lot,
 
 
-
                 "open_time":
 
                 (
-
                     candle_time
-
                     if candle_time is not None
-
                     else datetime.now()
-
                 ),
-
 
 
                 "close_time":
@@ -406,11 +355,9 @@ class PaperExecutor:
                 None,
 
 
-
                 "exit_reason":
 
                 None,
-
 
 
                 "status":
@@ -421,10 +368,7 @@ class PaperExecutor:
 
 
 
-
-
             self.positions[symbol] = position
-
 
 
 
@@ -436,20 +380,20 @@ class PaperExecutor:
 
                 f"{direction} "
 
-                f"{entry}"
+                f"entry={entry:.5f} "
+
+                f"SL={stop_loss:.5f} "
+
+                f"TP={take_profit:.5f}"
 
             )
-
-
 
 
             return True
 
 
 
-
         except Exception as e:
-
 
 
             log(
@@ -465,18 +409,20 @@ class PaperExecutor:
 
 
 
-
-
     # =====================================================
     # UPDATE PRICE
     # =====================================================
 
-
     def update_price(
+
             self,
+
             symbol,
+
             price,
+
             candle_time=None
+
     ):
 
 
@@ -504,6 +450,7 @@ class PaperExecutor:
 
             diff = price - pos["entry_price"]
 
+
         else:
 
             diff = pos["entry_price"] - price
@@ -515,9 +462,13 @@ class PaperExecutor:
 
 
         pos["pips"] = round(
+
             pips,
+
             2
+
         )
+
 
 
         profit = (
@@ -535,13 +486,17 @@ class PaperExecutor:
         )
 
 
+
         profit -= pos["commission"]
 
 
 
         pos["profit"] = round(
+
             profit,
+
             2
+
         )
 
 
@@ -563,7 +518,6 @@ class PaperExecutor:
     # EXIT CHECK
     # =====================================================
 
-
     def check_exit(
 
             self,
@@ -582,45 +536,86 @@ class PaperExecutor:
 
         if pos is None:
 
-
             return False
 
 
 
 
-
-        if pos["pips"] >= TAKE_PROFIT_PIPS:
-
-
-
-            return self.close_position(
-
-                symbol,
-
-                "TAKE_PROFIT",
-
-                candle_time
-
-            )
+        price = pos["current_price"]
 
 
 
 
+        # BUY EXIT
 
-        if pos["pips"] <= -STOP_LOSS_PIPS:
+        if pos["type"] == "BUY":
+
+
+            if price >= pos["take_profit"]:
+
+
+                return self.close_position(
+
+                    symbol,
+
+                    "TAKE_PROFIT",
+
+                    candle_time
+
+                )
 
 
 
-            return self.close_position(
+            if price <= pos["stop_loss"]:
 
-                symbol,
 
-                "STOP_LOSS",
+                return self.close_position(
 
-                candle_time
+                    symbol,
 
-            )
+                    "STOP_LOSS",
 
+                    candle_time
+
+                )
+
+
+
+
+
+        # SELL EXIT
+
+        else:
+
+
+
+            if price <= pos["take_profit"]:
+
+
+                return self.close_position(
+
+                    symbol,
+
+                    "TAKE_PROFIT",
+
+                    candle_time
+
+                )
+
+
+
+            if price >= pos["stop_loss"]:
+
+
+                return self.close_position(
+
+                    symbol,
+
+                    "STOP_LOSS",
+
+                    candle_time
+
+                )
 
 
 
@@ -635,7 +630,6 @@ class PaperExecutor:
     # CLOSE POSITION
     # =====================================================
 
-
     def close_position(
 
             self,
@@ -649,13 +643,9 @@ class PaperExecutor:
     ):
 
 
-
         if symbol not in self.positions:
 
-
             return False
-
-
 
 
 
@@ -663,13 +653,10 @@ class PaperExecutor:
 
 
 
-
         pos["status"] = "CLOSED"
 
 
-
         pos["exit_reason"] = reason
-
 
 
 
@@ -685,10 +672,7 @@ class PaperExecutor:
 
 
 
-
         pos["exit_price"] = pos["current_price"]
-
-
 
 
 
@@ -696,8 +680,6 @@ class PaperExecutor:
 
 
         self.equity = self.balance
-
-
 
 
 
@@ -709,15 +691,11 @@ class PaperExecutor:
 
 
 
-
-
         self.trade_logger.save_trade(
 
             pos
 
         )
-
-
 
 
 
@@ -741,21 +719,18 @@ class PaperExecutor:
 
 
 
+
     # =====================================================
     # RESET
     # =====================================================
-
 
     def reset(self):
 
 
         self.balance = self.initial_capital
 
-
         self.equity = self.initial_capital
 
-
         self.positions.clear()
-
 
         self.trade_history.clear()
