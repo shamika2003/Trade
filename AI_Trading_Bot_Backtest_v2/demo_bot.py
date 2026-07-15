@@ -90,7 +90,6 @@ signal.signal(
 
 
 
-
 # =====================================================
 # CREATE H1 FROM M5
 # =====================================================
@@ -148,6 +147,7 @@ def create_h1(df):
         return h1
 
 
+
     except Exception as e:
 
 
@@ -198,9 +198,15 @@ def create_report(executor):
 
     )
 
+
     log(
         "INFO | Report completed"
     )
+
+
+
+
+
 # =====================================================
 # MAIN
 # =====================================================
@@ -208,6 +214,7 @@ def create_report(executor):
 def main():
 
     global running
+
 
 
     log(
@@ -233,6 +240,7 @@ def main():
         log(
             "INFO | PAPER EXECUTOR ENABLED"
         )
+
 
 
     else:
@@ -273,7 +281,6 @@ def main():
         executor=executor
 
     )
-
 
 
     transformer = FeatureTransformer()
@@ -343,23 +350,26 @@ def main():
     )
 
 
+
+
+
     # =====================================================
-    # CSV BACKTEST LOOP
+    # OFFLINE BACKTEST
     # =====================================================
 
     if USE_OFFLINE:
 
 
+
         while running and controller.running:
 
 
-            # -----------------------------
-            # COMMAND HANDLING
-            # -----------------------------
 
             if controller.report_requested:
 
+
                 controller.report_requested = False
+
 
                 create_report(
                     executor
@@ -367,7 +377,9 @@ def main():
 
 
 
+
             if controller.paused:
+
 
                 time.sleep(1)
 
@@ -377,9 +389,6 @@ def main():
 
 
 
-            # -----------------------------
-            # GET MARKET SNAPSHOT
-            # -----------------------------
 
             market = replay.next_market_snapshot()
 
@@ -389,7 +398,7 @@ def main():
 
 
                 log(
-                    "INFO | CSV completed. Waiting for command"
+                    "INFO | CSV completed"
                 )
 
 
@@ -399,18 +408,16 @@ def main():
                     time.sleep(1)
 
 
+
                     if controller.report_requested:
 
+
                         controller.report_requested = False
+
 
                         create_report(
                             executor
                         )
-
-
-                    if controller.paused:
-
-                        continue
 
 
 
@@ -426,14 +433,11 @@ def main():
 
 
 
-            # -----------------------------
-            # PROCESS SYMBOLS
-            # -----------------------------
-
             for symbol, df_m5 in market.items():
 
 
                 try:
+
 
 
                     if df_m5 is None:
@@ -449,10 +453,10 @@ def main():
 
 
 
-
                     df_h1 = create_h1(
                         df_m5
                     )
+
 
 
                     if df_h1 is None:
@@ -462,7 +466,6 @@ def main():
 
 
                     df_h1["symbol"] = symbol
-
 
 
 
@@ -498,6 +501,7 @@ def main():
 
 
 
+
                 except Exception as e:
 
 
@@ -518,23 +522,38 @@ def main():
 
 
 
-
     # =====================================================
-    # LIVE LOOP
+    # LIVE MT5 MODE
     # =====================================================
 
     else:
+
 
 
         while running and controller.running:
 
 
 
-            # -----------------------------
-            # COMMAND HANDLING
-            # -----------------------------
+            # =========================================
+            # CHECK CLOSED MT5 TRADES
+            # =========================================
+
+            if hasattr(
+                executor,
+                "check_closed_trades"
+            ):
+
+                executor.check_closed_trades()
+
+
+
+
+            # =========================================
+            # COMMANDS
+            # =========================================
 
             if controller.paused:
+
 
                 time.sleep(1)
 
@@ -542,7 +561,14 @@ def main():
 
 
 
+
+
+            # =========================================
+            # MARKET LOOP
+            # =========================================
+
             for symbol in SYMBOLS:
+
 
 
                 try:
@@ -587,6 +613,10 @@ def main():
 
                         continue
 
+
+
+
+
                     core.process(
 
                         symbol,
@@ -609,9 +639,16 @@ def main():
                     )
 
 
+
+
+
             time.sleep(
                 LIVE_INTERVAL
             )
+
+
+
+
 
     # =====================================================
     # SHUTDOWN

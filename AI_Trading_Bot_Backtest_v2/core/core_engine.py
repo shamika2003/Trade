@@ -1,3 +1,5 @@
+# filename: core_engine.py
+
 from core.predictor import Predictor
 from core.signal_engine import decide_signal
 from core.risk_manager import RiskManager
@@ -10,7 +12,8 @@ from config_core import (
     MAX_OPEN_TRADES,
     MIN_CONFIDENCE,
     MAX_TOTAL_TRADES,
-    COOLDOWN_SECONDS
+    COOLDOWN_SECONDS,
+    TRADE_LOT
 )
 
 
@@ -20,6 +23,7 @@ from config_core import (
 # =====================================================
 
 class CoreEngine:
+
 
 
     def __init__(
@@ -72,14 +76,12 @@ class CoreEngine:
 
 
 
+
     # =====================================================
     # RESET SIGNAL
     # =====================================================
 
-    def reset_signal(
-            self,
-            symbol
-    ):
+    def reset_signal(self, symbol):
 
         self.last_signal.pop(
             symbol,
@@ -112,10 +114,6 @@ class CoreEngine:
 
 
 
-            # =========================================
-            # CURRENT PRICE
-            # =========================================
-
             current_price = float(
 
                 df["close"].iloc[-1]
@@ -123,20 +121,16 @@ class CoreEngine:
             )
 
 
-            # =========================================
-            # CURRENT ATR
-            # =========================================
 
             current_atr = float(
+
                 df["atr"].iloc[-1]
+
             )
 
 
 
 
-            # =========================================
-            # FALLBACK TIME
-            # =========================================
 
             if candle_time is None:
 
@@ -147,8 +141,11 @@ class CoreEngine:
 
 
 
+
+
+
             # =========================================
-            # MANAGE EXISTING POSITION
+            # EXISTING POSITION
             # =========================================
 
             if self.executor.has_open_trade(symbol):
@@ -175,9 +172,7 @@ class CoreEngine:
                     if closed:
 
 
-                        self.reset_signal(
-                            symbol
-                        )
+                        self.reset_signal(symbol)
 
 
                         self.risk.register_trade_close(
@@ -202,9 +197,8 @@ class CoreEngine:
 
 
 
-
             # =========================================
-            # AI PREDICTION
+            # PREDICTOR
             # =========================================
 
             predictor = self.predictors.get(symbol)
@@ -259,14 +253,24 @@ class CoreEngine:
 
             )
 
+
+
+
+
             if confidence < MIN_CONFIDENCE:
 
+
                 log(
-                    f"DEBUG | {symbol} confidence too low "
+
+                    f"DEBUG | {symbol} "
+                    f"confidence low "
                     f"{confidence:.2f}"
+
                 )
 
                 return
+
+
 
 
 
@@ -284,14 +288,14 @@ class CoreEngine:
 
 
 
+
             # =========================================
-            # SIGNAL THRESHOLD
+            # SIGNAL FILTER
             # =========================================
 
             if abs(signal_value) < SIGNAL_THRESHOLD:
 
                 return
-
 
 
 
@@ -350,6 +354,7 @@ class CoreEngine:
 
 
 
+
             # =========================================
             # OPEN TRADE
             # =========================================
@@ -369,7 +374,7 @@ class CoreEngine:
 
                     price=current_price,
 
-                    lot=0.01,
+                    lot=TRADE_LOT,
 
                     atr=current_atr,
 
@@ -382,7 +387,7 @@ class CoreEngine:
             except TypeError:
 
 
-                # MT5 executor compatibility
+                # compatibility with old executor
 
                 success = self.executor.open_trade(
 
@@ -392,12 +397,11 @@ class CoreEngine:
 
                     price=current_price,
 
-                    lot=0.01,
-                    
-                    atr=current_atr 
+                    lot=TRADE_LOT,
+
+                    atr=current_atr
 
                 )
-
 
 
 
@@ -420,6 +424,7 @@ class CoreEngine:
                 )
 
 
+
                 log(
 
                     f"INFO | TRADE OPENED {symbol}"
@@ -431,11 +436,7 @@ class CoreEngine:
             else:
 
 
-                self.reset_signal(
-
-                    symbol
-
-                )
+                self.reset_signal(symbol)
 
 
 

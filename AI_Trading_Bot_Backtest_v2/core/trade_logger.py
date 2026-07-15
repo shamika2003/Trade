@@ -152,7 +152,10 @@ class TradeLogger:
 
 
                 f.write(
-                    f"Exit Price : {trade['current_price']}\n"
+                    f"Exit Price : {trade.get(
+                        "current_price",
+                        trade.get("exit_price")
+                    )}\n"
                 )
 
 

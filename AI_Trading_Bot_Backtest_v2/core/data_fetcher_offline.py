@@ -125,11 +125,8 @@ class CSVDataFeed:
             window=2000
         )
 
-
         if df_m5 is None:
             return None, None
-
-
 
         # -----------------------------
         # CREATE H1 FROM M5
@@ -154,14 +151,9 @@ class CSVDataFeed:
             .reset_index()
         )
 
-
         df_h1["symbol"] = symbol
-
-
 
         if len(df_h1) < 100:
             return None, None
-
-
 
         return df_m5, df_h1
